@@ -9,7 +9,6 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
 };
 use rand::RngCore;
-use zeroize::Zeroize;
 
 use crate::CryptoError;
 
@@ -111,7 +110,7 @@ pub fn decrypt(
         aad: aad.as_bytes(),
     };
 
-    let mut plaintext = cipher
+    let plaintext = cipher
         .decrypt(xnonce, payload)
         .map_err(|_| CryptoError::DecryptionError(
             "Falha na autenticação: chave, nonce ou AAD incorretos, ou dados adulterados".into(),

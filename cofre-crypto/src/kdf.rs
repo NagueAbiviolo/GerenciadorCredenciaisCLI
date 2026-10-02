@@ -59,12 +59,7 @@ pub struct KdfOutput {
     pub verifier_salt: Vec<u8>,
 }
 
-impl Drop for KdfOutput {
-    fn drop(&mut self) {
-        self.derived_key.zeroize();
-        self.verifier.zeroize();
-    }
-}
+
 
 /// Gera um salt aleatório criptograficamente seguro.
 pub fn generate_salt() -> Result<Vec<u8>, CryptoError> {

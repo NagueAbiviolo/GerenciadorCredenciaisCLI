@@ -7,7 +7,7 @@
 //!   apenas a DEK, sem tocar nas credenciais.
 
 use rand::RngCore;
-use secrecy::{ExposeSecret, SecretVec};
+use secrecy::{ExposeSecret, SecretBox};
 use zeroize::Zeroize;
 
 use crate::aead;
@@ -41,7 +41,7 @@ pub struct VaultInit {
 /// A DEK é zeroizada automaticamente ao ser descartada.
 pub struct UnlockedVault {
     /// DEK em memória protegida.
-    dek: SecretVec<u8>,
+    dek: SecretBox<Vec<u8>>,
 }
 
 impl UnlockedVault {
@@ -49,7 +49,7 @@ impl UnlockedVault {
     ///
     /// O chamador deve usar a referência imediatamente e não copiá-la.
     pub fn dek(&self) -> &[u8] {
-        self.dek.expose_secret()
+        self.dek.expose_secret().as_slice()
     }
 
     /// Cifra dados sensíveis usando a DEK e AAD.
@@ -80,7 +80,7 @@ pub fn init_vault(password: &[u8], params: &KdfParams) -> Result<VaultInit, Cryp
         .map_err(|e| CryptoError::RandomError(e.to_string()))?;
 
     // 2. Derivar KEK e verificador a partir da senha mestre
-    let kdf_output = kdf::derive_new(password, params)?;
+    let mut kdf_output = kdf::derive_new(password, params)?;
 
     // 3. Cifrar a DEK com a KEK
     let (dek_nonce, encrypted_dek) = aead::encrypt_dek(&kdf_output.derived_key, &dek)?;
@@ -88,8 +88,9 @@ pub fn init_vault(password: &[u8], params: &KdfParams) -> Result<VaultInit, Cryp
     // 4. Serializar parâmetros KDF
     let kdf_params_json = serde_json::to_string(params)?;
 
-    // Zeroizar a DEK em texto puro
+    // Zeroizar a DEK e a KEK em texto puro
     dek.zeroize();
+    kdf_output.derived_key.zeroize();
 
     Ok(VaultInit {
         kek_salt: kdf_output.salt,
@@ -136,7 +137,7 @@ pub fn unlock_vault(
     kek.zeroize();
 
     // 6. Encapsular a DEK em SecretVec
-    let dek = SecretVec::new(dek_bytes);
+    let dek = SecretBox::new(Box::new(dek_bytes));
 
     Ok(UnlockedVault { dek })
 }
@@ -152,10 +153,12 @@ pub fn change_master_password(
     let dek_copy = vault.dek().to_vec();
 
     // Derivar nova KEK e verificador
-    let kdf_output = kdf::derive_new(new_password, params)?;
+    let mut kdf_output = kdf::derive_new(new_password, params)?;
 
     // Cifrar a DEK com a nova KEK
     let (dek_nonce, encrypted_dek) = aead::encrypt_dek(&kdf_output.derived_key, &dek_copy)?;
+    
+    kdf_output.derived_key.zeroize();
 
     let kdf_params_json = serde_json::to_string(params)?;
 

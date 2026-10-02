@@ -1,7 +1,7 @@
 //! Serviço do cofre: orquestra inicialização, desbloqueio e operações com credenciais.
 
 use cofre_crypto::aead;
-use cofre_crypto::keys::{self, UnlockedVault, VaultInit};
+use cofre_crypto::keys::{self, UnlockedVault};
 use cofre_crypto::kdf::KdfParams;
 use cofre_db::Database;
 use cofre_db::connection::DbError;
