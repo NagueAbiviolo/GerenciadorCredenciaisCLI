@@ -1,0 +1,21 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Banco de dados local (nunca commitar o cofre real)
+*.db
+*.db-wal
+*.db-shm
+
+# Backups do cofre
+*.cofre.bak

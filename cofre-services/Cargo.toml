@@ -1,0 +1,10 @@
+[package]
+name = "cofre-services"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cofre-crypto = { path = "../cofre-crypto" }
+cofre-db = { path = "../cofre-db" }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"

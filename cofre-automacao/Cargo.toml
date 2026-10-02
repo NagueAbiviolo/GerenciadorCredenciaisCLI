@@ -1,0 +1,13 @@
+[package]
+name = "cofre-automacao"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cofre-crypto = { path = "../cofre-crypto" }
+cofre-db = { path = "../cofre-db" }
+thiserror = "2"
+# Automação web será adicionada na Fase 5
+# chromiumoxide = "0.7"
+# url = "2"
+# psl = "2"
