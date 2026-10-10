@@ -140,6 +140,30 @@ impl Database {
         Ok(credenciais)
     }
 
+    /// Grava os campos cifrados de uma credencial.
+    ///
+    /// Usado após o INSERT, quando o ID real já é conhecido e pode compor a AAD.
+    pub fn definir_segredos_credencial(
+        &self,
+        id: i64,
+        segredo_criptografado: &[u8],
+        nonce: &[u8],
+        observacao_criptografada: Option<&[u8]>,
+        observacao_nonce: Option<&[u8]>,
+    ) -> Result<(), DbError> {
+        let alteradas = self.conn.execute(
+            "UPDATE credencial
+             SET segredo_criptografado = ?2, nonce = ?3,
+                 observacao_criptografada = ?4, observacao_nonce = ?5
+             WHERE id = ?1",
+            params![id, segredo_criptografado, nonce, observacao_criptografada, observacao_nonce],
+        )?;
+        if alteradas == 0 {
+            return Err(DbError::NotFound);
+        }
+        Ok(())
+    }
+
     /// Atualiza o timestamp de último uso de uma credencial.
     pub fn atualizar_ultimo_uso_credencial(&self, id: i64) -> Result<(), DbError> {
         self.conn.execute(

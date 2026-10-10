@@ -142,6 +142,10 @@ pub fn verify_password(
         .hash_password_into(password, verifier_salt, &mut computed)
         .map_err(|e| CryptoError::KdfError(e.to_string()))?;
 
+    // O tamanho deve ser comparado antes do zeroize: em Vec<u8>, zeroize() também
+    // trunca o vetor para len = 0.
+    let same_len = computed.len() == expected_verifier.len();
+
     // Comparação em tempo constante
     let matches = computed
         .iter()
@@ -150,7 +154,7 @@ pub fn verify_password(
 
     computed.zeroize();
 
-    if matches == 0 && computed.len() == expected_verifier.len() {
+    if same_len && matches == 0 {
         Ok(())
     } else {
         Err(CryptoError::InvalidMasterPassword)
