@@ -5,11 +5,13 @@ pub mod unlock;
 pub mod credencial;
 pub mod categoria;
 pub mod servico;
+pub mod senha_mestre;
 
 use clap::{Parser, Subcommand};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 use directories::ProjectDirs;
+use inquire::Confirm;
 
 /// Gerenciador Pessoal de Credenciais — CLI
 #[derive(Parser)]
@@ -39,6 +41,9 @@ pub enum Commands {
         nome: String,
     },
 
+    /// Alterar a senha mestre do cofre.
+    SenhaMestre,
+
     /// Gerenciar categorias.
     #[command(subcommand)]
     Categoria(CategoriaCommands),
@@ -65,6 +70,25 @@ pub enum CategoriaCommands {
     },
     /// Listar todas as categorias.
     List,
+    /// Editar uma categoria.
+    Edit {
+        /// ID da categoria.
+        id: i64,
+        /// Novo nome.
+        #[arg(short, long)]
+        nome: Option<String>,
+        /// Nova descrição (vazia remove a descrição).
+        #[arg(short, long)]
+        descricao: Option<String>,
+    },
+    /// Excluir uma categoria (os serviços dela ficam sem categoria).
+    Delete {
+        /// ID da categoria.
+        id: i64,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -83,6 +107,9 @@ pub enum ServicoCommands {
         /// URL principal (opcional).
         #[arg(short, long)]
         url: Option<String>,
+        /// Descrição (opcional).
+        #[arg(long)]
+        descricao: Option<String>,
     },
     /// Listar todos os serviços.
     List {
@@ -94,6 +121,37 @@ pub enum ServicoCommands {
     Search {
         /// Termo de pesquisa.
         termo: String,
+    },
+    /// Editar um serviço.
+    Edit {
+        /// ID do serviço.
+        id: i64,
+        /// Novo nome.
+        #[arg(short, long)]
+        nome: Option<String>,
+        /// Novo domínio principal.
+        #[arg(short, long)]
+        dominio: Option<String>,
+        /// Nova categoria.
+        #[arg(short, long, conflicts_with = "sem_categoria")]
+        categoria_id: Option<i64>,
+        /// Remover a categoria do serviço.
+        #[arg(long)]
+        sem_categoria: bool,
+        /// Nova URL principal (vazia remove a URL).
+        #[arg(short, long)]
+        url: Option<String>,
+        /// Nova descrição (vazia remove a descrição).
+        #[arg(long)]
+        descricao: Option<String>,
+    },
+    /// Excluir um serviço (só é permitido se não houver credenciais vinculadas).
+    Delete {
+        /// ID do serviço.
+        id: i64,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
     },
 }
 
@@ -110,14 +168,21 @@ pub enum CredencialCommands {
         /// Identificador (login, e-mail, CPF, etc.).
         #[arg(short, long)]
         identificador: String,
+        /// Solicitar uma observação privada (armazenada cifrada).
+        #[arg(short, long)]
+        observacao: bool,
     },
-    /// Listar todas as credenciais.
-    List,
+    /// Listar as credenciais.
+    List {
+        /// Listar as credenciais desativadas em vez das ativas.
+        #[arg(long)]
+        inativas: bool,
+    },
     /// Exibir detalhes de uma credencial (e opcionalmente revelar a senha).
     Show {
         /// ID da credencial.
         id: i64,
-        /// Revelar a senha em texto puro.
+        /// Revelar a senha e a observação em texto puro.
         #[arg(short, long)]
         revelar: bool,
     },
@@ -125,6 +190,55 @@ pub enum CredencialCommands {
     Search {
         /// Termo de pesquisa.
         termo: String,
+    },
+    /// Copiar a senha para a área de transferência, limpando-a após alguns segundos.
+    Copy {
+        /// ID da credencial.
+        id: i64,
+        /// Segundos até limpar a área de transferência.
+        #[arg(short, long, default_value_t = 20, value_parser = clap::value_parser!(u64).range(1..=600))]
+        segundos: u64,
+    },
+    /// Editar uma credencial.
+    Edit {
+        /// ID da credencial.
+        id: i64,
+        /// Novo nome de exibição.
+        #[arg(short, long)]
+        nome: Option<String>,
+        /// Novo identificador.
+        #[arg(short, long)]
+        identificador: Option<String>,
+        /// Marcar (true) ou desmarcar (false) como favorita.
+        #[arg(short, long)]
+        favorita: Option<bool>,
+        /// Solicitar uma nova senha.
+        #[arg(short, long)]
+        senha: bool,
+        /// Solicitar uma nova observação.
+        #[arg(short, long, conflicts_with = "remover_observacao")]
+        observacao: bool,
+        /// Remover a observação.
+        #[arg(long)]
+        remover_observacao: bool,
+    },
+    /// Desativar uma credencial (fica oculta, mas não é apagada).
+    Deactivate {
+        /// ID da credencial.
+        id: i64,
+    },
+    /// Reativar uma credencial desativada.
+    Activate {
+        /// ID da credencial.
+        id: i64,
+    },
+    /// Excluir definitivamente uma credencial.
+    Delete {
+        /// ID da credencial.
+        id: i64,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
     },
 }
 
@@ -147,12 +261,29 @@ fn resolve_db_path(custom: &Option<PathBuf>) -> Result<PathBuf> {
     }
 }
 
+/// Pede confirmação antes de uma operação destrutiva. `sim` pula a pergunta.
+pub fn confirmar(mensagem: &str, sim: bool) -> Result<bool> {
+    if sim {
+        return Ok(true);
+    }
+    Confirm::new(mensagem)
+        .with_default(false)
+        .prompt()
+        .context("Falha ao ler a confirmação")
+}
+
+/// Converte texto vazio em `None` (usado para remover campos opcionais na edição).
+pub fn vazio_para_none(valor: String) -> Option<String> {
+    if valor.trim().is_empty() { None } else { Some(valor) }
+}
+
 /// Executa o comando selecionado.
 pub fn execute(cli: Cli) -> Result<()> {
     let db_path = resolve_db_path(&cli.db_path)?;
 
     match cli.command {
         Commands::Init { nome } => init::execute(&db_path, &nome),
+        Commands::SenhaMestre => senha_mestre::execute(&db_path),
         Commands::Categoria(cmd) => categoria::execute(&db_path, cmd),
         Commands::Servico(cmd) => servico::execute(&db_path, cmd),
         Commands::Credencial(cmd) => credencial::execute(&db_path, cmd),

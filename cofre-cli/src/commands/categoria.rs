@@ -7,7 +7,7 @@ use comfy_table::{Table, ContentArrangement};
 use cofre_db::Database;
 use cofre_db::models::NovaCategoria;
 
-use super::CategoriaCommands;
+use super::{confirmar, vazio_para_none, CategoriaCommands};
 
 pub fn execute(db_path: &Path, cmd: CategoriaCommands) -> Result<()> {
     let db = Database::open(db_path)
@@ -44,6 +44,40 @@ pub fn execute(db_path: &Path, cmd: CategoriaCommands) -> Result<()> {
 
             println!("{table}");
             println!("\nTotal: {} categoria(s)", categorias.len());
+        }
+        CategoriaCommands::Edit { id, nome, descricao } => {
+            if nome.is_none() && descricao.is_none() {
+                anyhow::bail!("Nada para alterar. Informe --nome e/ou --descricao.");
+            }
+            let atual = db.buscar_categoria(id)
+                .context("Categoria não encontrada")?;
+
+            let nome = nome.unwrap_or(atual.nome);
+            let descricao = match descricao {
+                Some(d) => vazio_para_none(d),
+                None => atual.descricao,
+            };
+            db.atualizar_categoria(id, &nome, descricao.as_deref())
+                .context("Falha ao atualizar categoria")?;
+            println!("✅ Categoria #{id} atualizada.");
+        }
+        CategoriaCommands::Delete { id, sim } => {
+            let cat = db.buscar_categoria(id)
+                .context("Categoria não encontrada")?;
+            let servicos = db.contar_servicos_categoria(id)?;
+
+            let mut mensagem = format!("Excluir a categoria '{}'?", cat.nome);
+            if servicos > 0 {
+                mensagem.push_str(&format!(" {servicos} serviço(s) ficarão sem categoria."));
+            }
+            if !confirmar(&mensagem, sim)? {
+                println!("Operação cancelada.");
+                return Ok(());
+            }
+
+            db.excluir_categoria(id)
+                .context("Falha ao excluir categoria")?;
+            println!("🗑️  Categoria '{}' excluída.", cat.nome);
         }
     }
 

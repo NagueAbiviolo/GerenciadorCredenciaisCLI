@@ -13,3 +13,4 @@ pub mod models;
 pub mod repositories;
 
 pub use connection::Database;
+pub use rusqlite;

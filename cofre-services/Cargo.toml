@@ -8,3 +8,4 @@ cofre-crypto = { path = "../cofre-crypto" }
 cofre-db = { path = "../cofre-db" }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
+serde_json = "1"

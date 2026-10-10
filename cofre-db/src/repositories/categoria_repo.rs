@@ -64,19 +64,31 @@ impl Database {
 
     /// Atualiza uma categoria.
     pub fn atualizar_categoria(&self, id: i64, nome: &str, descricao: Option<&str>) -> Result<(), DbError> {
-        self.conn.execute(
+        let alteradas = self.conn.execute(
             "UPDATE categoria SET nome = ?2, descricao = ?3, atualizado_em = datetime('now') WHERE id = ?1",
             params![id, nome, descricao],
         )?;
+        if alteradas == 0 {
+            return Err(DbError::NotFound);
+        }
         Ok(())
     }
 
-    /// Exclui (desativa) uma categoria.
-    pub fn desativar_categoria(&self, id: i64) -> Result<(), DbError> {
-        self.conn.execute(
-            "UPDATE categoria SET ativa = 0, atualizado_em = datetime('now') WHERE id = ?1",
-            params![id],
-        )?;
+    /// Exclui uma categoria. Os serviços vinculados ficam sem categoria (ON DELETE SET NULL).
+    pub fn excluir_categoria(&self, id: i64) -> Result<(), DbError> {
+        let alteradas = self.conn.execute("DELETE FROM categoria WHERE id = ?1", params![id])?;
+        if alteradas == 0 {
+            return Err(DbError::NotFound);
+        }
         Ok(())
+    }
+
+    /// Conta os serviços vinculados a uma categoria.
+    pub fn contar_servicos_categoria(&self, id: i64) -> Result<i64, DbError> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM servico WHERE categoria_id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?)
     }
 }

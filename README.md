@@ -31,10 +31,13 @@ Workspace Cargo dividido por responsabilidade:
 cargo build --release
 
 cofre init --nome "Seu Nome"
-cofre categoria add | list
-cofre servico   add | list | search
-cofre credencial add | list | show | search
+cofre senha-mestre
+cofre categoria  add | list | edit | delete
+cofre servico    add | list | search | edit | delete
+cofre credencial add | list | show | search | copy | edit | deactivate | activate | delete
 ```
+
+`cofre credencial copy <id>` copia a senha para a área de transferência e a limpa após 20 s (ajustável com `--segundos`; Ctrl+C limpa na hora). No Windows, o conteúdo não vai para o histórico nem para a sincronização em nuvem da área de transferência.
 
 ## 📄 Documentação
 

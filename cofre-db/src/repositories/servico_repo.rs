@@ -118,12 +118,43 @@ impl Database {
         Ok(servicos)
     }
 
-    /// Desativa um serviço.
-    pub fn desativar_servico(&self, id: i64) -> Result<(), DbError> {
-        self.conn.execute(
-            "UPDATE servico SET ativo = 0, atualizado_em = datetime('now') WHERE id = ?1",
-            params![id],
+    /// Atualiza os dados de um serviço.
+    pub fn atualizar_servico(&self, id: i64, dados: &NovoServico) -> Result<(), DbError> {
+        let alteradas = self.conn.execute(
+            "UPDATE servico
+             SET categoria_id = ?2, nome = ?3, dominio_principal = ?4, url_principal = ?5,
+                 descricao = ?6, atualizado_em = datetime('now')
+             WHERE id = ?1",
+            params![
+                id,
+                dados.categoria_id,
+                dados.nome,
+                dados.dominio_principal,
+                dados.url_principal,
+                dados.descricao,
+            ],
         )?;
+        if alteradas == 0 {
+            return Err(DbError::NotFound);
+        }
         Ok(())
+    }
+
+    /// Exclui um serviço. Falha por chave estrangeira se ainda houver credenciais vinculadas.
+    pub fn excluir_servico(&self, id: i64) -> Result<(), DbError> {
+        let alteradas = self.conn.execute("DELETE FROM servico WHERE id = ?1", params![id])?;
+        if alteradas == 0 {
+            return Err(DbError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Conta as credenciais (ativas ou não) vinculadas a um serviço.
+    pub fn contar_credenciais_servico(&self, id: i64) -> Result<i64, DbError> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM credencial WHERE servico_id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?)
     }
 }
