@@ -21,6 +21,12 @@ pub enum VaultServiceError {
 
     #[error("Cofre não inicializado. Execute 'cofre init' primeiro.")]
     NotInitialized,
+
+    #[error("Dado inválido: {0}")]
+    Invalido(String),
+
+    #[error("{0}")]
+    EmUso(String),
 }
 
 impl From<cofre_db::rusqlite::Error> for VaultServiceError {
@@ -307,37 +313,13 @@ pub fn excluir_credencial(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use crate::testes::{params_teste, DbTemp};
     use cofre_db::models::NovoServico;
 
-    /// Banco temporário em arquivo, removido ao final do teste.
-    struct DbTemp(std::path::PathBuf);
-
-    impl DbTemp {
-        fn new(nome: &str) -> Self {
-            let path = std::env::temp_dir()
-                .join(format!("cofre-teste-{nome}-{}.db", std::process::id()));
-            let _ = std::fs::remove_file(&path);
-            Self(path)
-        }
-    }
-
-    impl Drop for DbTemp {
-        fn drop(&mut self) {
-            for sufixo in ["", "-wal", "-shm"] {
-                let _ = std::fs::remove_file(format!("{}{sufixo}", self.0.display()));
-            }
-        }
-    }
-
-    /// Parâmetros leves de KDF: os padrões (256 MiB) deixam os testes muito lentos.
-    fn params_teste() -> KdfParams {
-        KdfParams { m_cost_kib: 16_384, t_cost: 1, p_cost: 1 }
-    }
-
     /// Cria um cofre desbloqueado com um serviço cadastrado.
-    fn cofre_com_servico(tmp: &DbTemp) -> (Database, UnlockedVault, i64, i64) {
+    pub(crate) fn cofre_com_servico(tmp: &DbTemp) -> (Database, UnlockedVault, i64, i64) {
         let db = Database::open(&tmp.0).unwrap();
         init_vault_com_params(&db, "Teste", b"senha-mestre-forte", &params_teste()).unwrap();
         let (vault, usuario_id) = unlock_vault(&db, b"senha-mestre-forte").unwrap();

@@ -19,7 +19,7 @@ fn main() {
     let cli = Cli::parse();
 
     if let Err(e) = commands::execute(cli) {
-        eprintln!("❌ Erro: {e}");
+        eprintln!("❌ Erro: {e:#}");
         std::process::exit(1);
     }
 }

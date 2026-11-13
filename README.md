@@ -34,8 +34,13 @@ cofre init --nome "Seu Nome"
 cofre senha-mestre
 cofre categoria  add | list | edit | delete
 cofre servico    add | list | search | edit | delete
+cofre servico url add | list | edit | delete            # URLs de login, recuperação, cadastro...
 cofre credencial add | list | show | search | copy | edit | deactivate | activate | delete
+cofre credencial metodo add | list | edit | delete      # senha, TOTP, SMS, passkey...
+cofre credencial email  add | list | edit | delete      # e-mails de recuperação (cifrados)
 ```
+
+Os e-mails de recuperação são cifrados com a DEK e pedidos em prompt (não vão para o histórico do shell). Na listagem aparecem mascarados, e `--revelar` mostra o endereço completo.
 
 `cofre credencial copy <id>` copia a senha para a área de transferência e a limpa após 20 s (ajustável com `--segundos`; Ctrl+C limpa na hora). No Windows, o conteúdo não vai para o histórico nem para a sincronização em nuvem da área de transferência.
 

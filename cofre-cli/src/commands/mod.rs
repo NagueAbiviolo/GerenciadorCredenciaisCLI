@@ -6,8 +6,11 @@ pub mod credencial;
 pub mod categoria;
 pub mod servico;
 pub mod senha_mestre;
+pub mod url;
+pub mod metodo;
+pub mod email;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use directories::ProjectDirs;
@@ -153,6 +156,84 @@ pub enum ServicoCommands {
         #[arg(short = 'y', long)]
         sim: bool,
     },
+    /// Gerenciar as URLs do serviço (login, recuperação, cadastro...).
+    #[command(subcommand)]
+    Url(UrlCommands),
+}
+
+/// Tipo de uma URL de serviço.
+#[derive(Clone, Copy, ValueEnum)]
+pub enum TipoUrl {
+    Principal,
+    Login,
+    Recuperacao,
+    Cadastro,
+    Logout,
+}
+
+impl TipoUrl {
+    pub fn como_db(self) -> &'static str {
+        match self {
+            TipoUrl::Principal => "PRINCIPAL",
+            TipoUrl::Login => "LOGIN",
+            TipoUrl::Recuperacao => "RECUPERACAO",
+            TipoUrl::Cadastro => "CADASTRO",
+            TipoUrl::Logout => "LOGOUT",
+        }
+    }
+}
+
+#[derive(Subcommand)]
+pub enum UrlCommands {
+    /// Adicionar uma URL a um serviço (a primeira vira a padrão).
+    Add {
+        /// ID do serviço.
+        servico_id: i64,
+        /// URL completa (ex: https://github.com/login).
+        url: String,
+        /// Tipo da URL.
+        #[arg(short, long, value_enum, default_value_t = TipoUrl::Login)]
+        tipo: TipoUrl,
+        /// Descrição opcional.
+        #[arg(short, long)]
+        descricao: Option<String>,
+        /// Tornar esta a URL padrão do serviço.
+        #[arg(short, long)]
+        padrao: bool,
+    },
+    /// Listar as URLs de um serviço.
+    List {
+        /// ID do serviço.
+        servico_id: i64,
+    },
+    /// Editar uma URL.
+    Edit {
+        /// ID da URL.
+        id: i64,
+        /// Nova URL.
+        #[arg(short, long)]
+        url: Option<String>,
+        /// Novo tipo.
+        #[arg(short, long, value_enum)]
+        tipo: Option<TipoUrl>,
+        /// Nova descrição (vazia remove a descrição).
+        #[arg(short, long)]
+        descricao: Option<String>,
+        /// Tornar esta a URL padrão do serviço.
+        #[arg(short, long)]
+        padrao: bool,
+        /// Ativar (true) ou desativar (false) a URL.
+        #[arg(short, long)]
+        ativa: Option<bool>,
+    },
+    /// Excluir uma URL.
+    Delete {
+        /// ID da URL.
+        id: i64,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -235,6 +316,134 @@ pub enum CredencialCommands {
     /// Excluir definitivamente uma credencial.
     Delete {
         /// ID da credencial.
+        id: i64,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
+    },
+    /// Gerenciar os métodos de autenticação da credencial (senha, TOTP, SMS...).
+    #[command(subcommand)]
+    Metodo(MetodoCommands),
+    /// Gerenciar os e-mails de recuperação da credencial (armazenados cifrados).
+    #[command(subcommand)]
+    Email(EmailCommands),
+}
+
+/// Tipo de um método de autenticação.
+#[derive(Clone, Copy, ValueEnum)]
+pub enum TipoMetodo {
+    Senha,
+    Totp,
+    Sms,
+    Email,
+    Passkey,
+    Biometria,
+    Aplicativo,
+}
+
+impl TipoMetodo {
+    pub fn como_db(self) -> &'static str {
+        match self {
+            TipoMetodo::Senha => "SENHA",
+            TipoMetodo::Totp => "TOTP",
+            TipoMetodo::Sms => "SMS",
+            TipoMetodo::Email => "EMAIL",
+            TipoMetodo::Passkey => "PASSKEY",
+            TipoMetodo::Biometria => "BIOMETRIA",
+            TipoMetodo::Aplicativo => "APLICATIVO",
+        }
+    }
+}
+
+#[derive(Subcommand)]
+pub enum MetodoCommands {
+    /// Adicionar um método de autenticação a uma credencial.
+    Add {
+        /// ID da credencial.
+        credencial_id: i64,
+        /// Tipo do método.
+        #[arg(short, long, value_enum)]
+        tipo: TipoMetodo,
+        /// Descrição opcional (ex: "Google Authenticator", "celular final 1234").
+        #[arg(short, long)]
+        descricao: Option<String>,
+        /// Tornar este o método principal da credencial.
+        #[arg(short, long)]
+        principal: bool,
+    },
+    /// Listar os métodos de autenticação de uma credencial.
+    List {
+        /// ID da credencial.
+        credencial_id: i64,
+    },
+    /// Editar um método de autenticação.
+    Edit {
+        /// ID do método.
+        id: i64,
+        /// Novo tipo.
+        #[arg(short, long, value_enum)]
+        tipo: Option<TipoMetodo>,
+        /// Nova descrição (vazia remove a descrição).
+        #[arg(short, long)]
+        descricao: Option<String>,
+        /// Marcar (true) ou desmarcar (false) como principal.
+        #[arg(short, long)]
+        principal: Option<bool>,
+        /// Habilitar (true) ou desabilitar (false) o método.
+        #[arg(long)]
+        habilitado: Option<bool>,
+    },
+    /// Excluir um método de autenticação.
+    Delete {
+        /// ID do método.
+        id: i64,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum EmailCommands {
+    /// Adicionar um e-mail de recuperação (o endereço é pedido em prompt).
+    Add {
+        /// ID da credencial.
+        credencial_id: i64,
+        /// Tornar este o e-mail principal da credencial.
+        #[arg(short, long)]
+        principal: bool,
+        /// Marcar o e-mail como já verificado.
+        #[arg(short, long)]
+        verificado: bool,
+    },
+    /// Listar os e-mails de recuperação de uma credencial (mascarados por padrão).
+    List {
+        /// ID da credencial.
+        credencial_id: i64,
+        /// Exibir os endereços completos.
+        #[arg(short, long)]
+        revelar: bool,
+    },
+    /// Editar um e-mail de recuperação.
+    Edit {
+        /// ID do e-mail.
+        id: i64,
+        /// Pedir um novo endereço (a verificação anterior é desfeita).
+        #[arg(short, long)]
+        email: bool,
+        /// Marcar (true) ou desmarcar (false) como principal.
+        #[arg(short, long)]
+        principal: Option<bool>,
+        /// Marcar como verificado (true) ou não verificado (false).
+        #[arg(short, long)]
+        verificado: Option<bool>,
+        /// Ativar (true) ou desativar (false) o e-mail.
+        #[arg(short, long)]
+        ativo: Option<bool>,
+    },
+    /// Excluir um e-mail de recuperação.
+    Delete {
+        /// ID do e-mail.
         id: i64,
         /// Não pedir confirmação.
         #[arg(short = 'y', long)]

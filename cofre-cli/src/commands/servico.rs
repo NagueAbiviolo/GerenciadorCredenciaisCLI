@@ -106,6 +106,7 @@ pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
                 .context("Falha ao atualizar serviço")?;
             println!("✅ Serviço #{id} atualizado.");
         }
+        ServicoCommands::Url(cmd) => return super::url::execute(&db, cmd),
         ServicoCommands::Delete { id, sim } => {
             let servico = db.buscar_servico(id)
                 .context("Serviço não encontrado")?;

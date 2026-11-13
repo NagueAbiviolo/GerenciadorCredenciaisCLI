@@ -107,6 +107,53 @@ pub struct UrlServico {
     pub ativa: bool,
 }
 
+/// Dados para criar (ou atualizar) uma URL de serviço.
+pub struct NovaUrlServico {
+    pub servico_id: i64,
+    pub url: String,
+    /// Um de: PRINCIPAL, LOGIN, RECUPERACAO, CADASTRO, LOGOUT.
+    pub tipo: String,
+    pub descricao: Option<String>,
+    pub padrao: bool,
+}
+
+/// Modelo da tabela `metodo_autenticacao`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetodoAutenticacao {
+    pub id: i64,
+    pub credencial_id: i64,
+    pub tipo: String,
+    pub descricao: Option<String>,
+    pub principal: bool,
+    pub habilitado: bool,
+    pub configurado_em: Option<NaiveDateTime>,
+    pub atualizado_em: NaiveDateTime,
+}
+
+/// Dados para criar (ou atualizar) um método de autenticação.
+pub struct NovoMetodoAutenticacao {
+    pub credencial_id: i64,
+    /// Um de: SENHA, TOTP, SMS, EMAIL, PASSKEY, BIOMETRIA, APLICATIVO.
+    pub tipo: String,
+    pub descricao: Option<String>,
+    pub principal: bool,
+    pub habilitado: bool,
+}
+
+/// Modelo da tabela `email_recuperacao` (o e-mail fica cifrado).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailRecuperacao {
+    pub id: i64,
+    pub credencial_id: i64,
+    pub email_criptografado: Vec<u8>,
+    pub nonce: Vec<u8>,
+    pub principal: bool,
+    pub verificado: bool,
+    pub verificado_em: Option<NaiveDateTime>,
+    pub criado_em: NaiveDateTime,
+    pub ativo: bool,
+}
+
 /// Modelo da tabela `evento_auditoria`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventoAuditoria {

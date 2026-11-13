@@ -112,6 +112,9 @@ fn copiar_temporariamente(texto: &str, segundos: u64) -> Result<()> {
 
 pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
     match cmd {
+        CredencialCommands::Metodo(cmd) => return super::metodo::execute(db_path, cmd),
+        CredencialCommands::Email(cmd) => return super::email::execute(db_path, cmd),
+
         CredencialCommands::Add { servico_id, nome, identificador, observacao } => {
             let (db, vault, usuario_id) = unlock::unlock(db_path)?;
 
@@ -198,6 +201,20 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
             }
 
             println!("└─────────────────────────────────────────");
+
+            let metodos = db.listar_metodos_autenticacao(cred.id)
+                .context("Falha ao listar métodos de autenticação")?;
+            if !metodos.is_empty() {
+                println!("\n🔐 Métodos de autenticação:");
+                println!("{}", super::metodo::tabela_metodos(&metodos));
+            }
+
+            let emails = db.listar_emails_recuperacao(cred.id)
+                .context("Falha ao listar e-mails de recuperação")?;
+            if !emails.is_empty() {
+                println!("\n📧 E-mails de recuperação{}:", if revelar { "" } else { " (mascarados)" });
+                println!("{}", super::email::tabela_emails(&vault, usuario_id, &emails, revelar)?);
+            }
         }
 
         CredencialCommands::Search { termo } => {
