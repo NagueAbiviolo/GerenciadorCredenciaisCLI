@@ -3,7 +3,10 @@
 [advisories]
 # Vulnerabilidades conhecidas no RustSec Advisory Database são negadas por padrão.
 yanked = "warn"
-ignore = []
+ignore = [
+    # chrono sem manutenção: troca por `time`/`jiff` acompanhada no issue #28.
+    { id = "RUSTSEC-2026-0543", reason = "substituição planejada no issue #28" },
+]
 
 [licenses]
 allow = [
