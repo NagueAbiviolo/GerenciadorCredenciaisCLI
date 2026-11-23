@@ -1,27 +1,31 @@
 //! Comandos de gerenciamento de categorias.
 
-use std::path::Path;
 use anyhow::{Context, Result};
-use comfy_table::{Table, ContentArrangement};
+use comfy_table::{ContentArrangement, Table};
+use std::path::Path;
 
-use cofre_db::Database;
 use cofre_db::models::NovaCategoria;
+use cofre_db::Database;
 
 use super::{confirmar, vazio_para_none, CategoriaCommands};
 
 pub fn execute(db_path: &Path, cmd: CategoriaCommands) -> Result<()> {
-    let db = Database::open(db_path)
-        .context("Falha ao abrir o banco de dados")?;
+    let db = Database::open(db_path).context("Falha ao abrir o banco de dados")?;
 
     match cmd {
         CategoriaCommands::Add { nome, descricao } => {
-            let nova = NovaCategoria { nome: nome.clone(), descricao };
-            let id = db.criar_categoria(&nova)
+            let nova = NovaCategoria {
+                nome: nome.clone(),
+                descricao,
+            };
+            let id = db
+                .criar_categoria(&nova)
                 .context("Falha ao criar categoria")?;
             println!("✅ Categoria '{nome}' criada com ID {id}.");
         }
         CategoriaCommands::List => {
-            let categorias = db.listar_categorias()
+            let categorias = db
+                .listar_categorias()
                 .context("Falha ao listar categorias")?;
 
             if categorias.is_empty() {
@@ -45,11 +49,16 @@ pub fn execute(db_path: &Path, cmd: CategoriaCommands) -> Result<()> {
             println!("{table}");
             println!("\nTotal: {} categoria(s)", categorias.len());
         }
-        CategoriaCommands::Edit { id, nome, descricao } => {
+        CategoriaCommands::Edit {
+            id,
+            nome,
+            descricao,
+        } => {
             if nome.is_none() && descricao.is_none() {
                 anyhow::bail!("Nada para alterar. Informe --nome e/ou --descricao.");
             }
-            let atual = db.buscar_categoria(id)
+            let atual = db
+                .buscar_categoria(id)
                 .context("Categoria não encontrada")?;
 
             let nome = nome.unwrap_or(atual.nome);
@@ -62,7 +71,8 @@ pub fn execute(db_path: &Path, cmd: CategoriaCommands) -> Result<()> {
             println!("✅ Categoria #{id} atualizada.");
         }
         CategoriaCommands::Delete { id, sim } => {
-            let cat = db.buscar_categoria(id)
+            let cat = db
+                .buscar_categoria(id)
                 .context("Categoria não encontrada")?;
             let servicos = db.contar_servicos_categoria(id)?;
 

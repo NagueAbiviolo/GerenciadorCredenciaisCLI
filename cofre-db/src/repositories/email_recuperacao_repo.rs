@@ -25,7 +25,11 @@ fn mapear_email(row: &Row<'_>) -> rusqlite::Result<EmailRecuperacao> {
 }
 
 fn exigir_alteracao(alteradas: usize) -> Result<(), DbError> {
-    if alteradas == 0 { Err(DbError::NotFound) } else { Ok(()) }
+    if alteradas == 0 {
+        Err(DbError::NotFound)
+    } else {
+        Ok(())
+    }
 }
 
 impl Database {
@@ -91,7 +95,11 @@ impl Database {
     }
 
     /// Marca o e-mail como verificado (registrando a data) ou não verificado.
-    pub fn definir_email_recuperacao_verificado(&self, id: i64, verificado: bool) -> Result<(), DbError> {
+    pub fn definir_email_recuperacao_verificado(
+        &self,
+        id: i64,
+        verificado: bool,
+    ) -> Result<(), DbError> {
         exigir_alteracao(self.conn.execute(
             "UPDATE email_recuperacao
              SET verificado = ?2,

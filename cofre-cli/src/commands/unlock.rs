@@ -1,8 +1,8 @@
 //! Utilitários de senha e desbloqueio do cofre (usados por vários comandos).
 
-use std::path::Path;
 use anyhow::{Context, Result};
 use inquire::Password;
+use std::path::Path;
 use zeroize::Zeroizing;
 
 use cofre_crypto::keys::UnlockedVault;
@@ -31,7 +31,10 @@ pub fn pedir_senha_nova(mensagem: &str, ajuda: Option<&str>) -> Result<Zeroizing
     if let Some(ajuda) = ajuda {
         prompt = prompt.with_help_message(ajuda);
     }
-    let senha = prompt.prompt().map(Zeroizing::new).context("Falha ao ler a senha")?;
+    let senha = prompt
+        .prompt()
+        .map(Zeroizing::new)
+        .context("Falha ao ler a senha")?;
     if senha.is_empty() {
         anyhow::bail!("A senha não pode ser vazia.");
     }
@@ -54,8 +57,7 @@ pub fn pedir_senha_mestre_nova(mensagem: &str) -> Result<Zeroizing<String>> {
 ///
 /// Retorna a sessão desbloqueada, o banco e o ID do usuário.
 pub fn unlock(db_path: &Path) -> Result<(Database, UnlockedVault, i64)> {
-    let db = Database::open(db_path)
-        .context("Falha ao abrir o banco de dados")?;
+    let db = Database::open(db_path).context("Falha ao abrir o banco de dados")?;
 
     let senha = pedir_senha("Senha mestre:")?;
 

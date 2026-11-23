@@ -1,7 +1,7 @@
 //! Comando `cofre init` — Inicializa um novo cofre.
 
-use std::path::Path;
 use anyhow::{Context, Result};
+use std::path::Path;
 
 use cofre_db::Database;
 use cofre_services::vault_service;
@@ -19,8 +19,7 @@ pub fn execute(db_path: &Path, nome: &str) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let db = Database::open(db_path)
-        .context("Falha ao abrir/criar o banco de dados")?;
+    let db = Database::open(db_path).context("Falha ao abrir/criar o banco de dados")?;
 
     vault_service::init_vault(&db, nome, senha.as_bytes())
         .context("Falha ao inicializar o cofre")?;

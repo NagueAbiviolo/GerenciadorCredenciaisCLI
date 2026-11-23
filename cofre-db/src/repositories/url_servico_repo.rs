@@ -21,7 +21,11 @@ fn mapear_url(row: &Row<'_>) -> rusqlite::Result<UrlServico> {
 }
 
 fn exigir_alteracao(alteradas: usize) -> Result<(), DbError> {
-    if alteradas == 0 { Err(DbError::NotFound) } else { Ok(()) }
+    if alteradas == 0 {
+        Err(DbError::NotFound)
+    } else {
+        Ok(())
+    }
 }
 
 impl Database {
@@ -31,7 +35,13 @@ impl Database {
         self.conn.execute(
             "INSERT INTO url_servico (servico_id, url, tipo, descricao, padrao)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![nova.servico_id, nova.url, nova.tipo, nova.descricao, nova.padrao],
+            params![
+                nova.servico_id,
+                nova.url,
+                nova.tipo,
+                nova.descricao,
+                nova.padrao
+            ],
         )?;
         Ok(self.conn.last_insert_rowid())
     }

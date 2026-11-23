@@ -1,20 +1,25 @@
 //! Comandos de gerenciamento de serviços.
 
-use std::path::Path;
 use anyhow::{Context, Result};
-use comfy_table::{Table, ContentArrangement};
+use comfy_table::{ContentArrangement, Table};
+use std::path::Path;
 
-use cofre_db::Database;
 use cofre_db::models::NovoServico;
+use cofre_db::Database;
 
 use super::{confirmar, vazio_para_none, ServicoCommands};
 
 pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
-    let db = Database::open(db_path)
-        .context("Falha ao abrir o banco de dados")?;
+    let db = Database::open(db_path).context("Falha ao abrir o banco de dados")?;
 
     match cmd {
-        ServicoCommands::Add { nome, dominio, categoria_id, url, descricao } => {
+        ServicoCommands::Add {
+            nome,
+            dominio,
+            categoria_id,
+            url,
+            descricao,
+        } => {
             let novo = NovoServico {
                 categoria_id,
                 nome: nome.clone(),
@@ -22,12 +27,12 @@ pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
                 url_principal: url,
                 descricao,
             };
-            let id = db.criar_servico(&novo)
-                .context("Falha ao criar serviço")?;
+            let id = db.criar_servico(&novo).context("Falha ao criar serviço")?;
             println!("✅ Serviço '{nome}' criado com ID {id}.");
         }
         ServicoCommands::List { categoria_id } => {
-            let servicos = db.listar_servicos(categoria_id)
+            let servicos = db
+                .listar_servicos(categoria_id)
                 .context("Falha ao listar serviços")?;
 
             if servicos.is_empty() {
@@ -44,7 +49,9 @@ pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
                     s.id.to_string(),
                     s.nome.clone(),
                     s.dominio_principal.clone(),
-                    s.categoria_id.map(|id| id.to_string()).unwrap_or("-".into()),
+                    s.categoria_id
+                        .map(|id| id.to_string())
+                        .unwrap_or("-".into()),
                     s.criado_em.format("%d/%m/%Y %H:%M").to_string(),
                 ]);
             }
@@ -53,7 +60,8 @@ pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
             println!("\nTotal: {} serviço(s)", servicos.len());
         }
         ServicoCommands::Search { termo } => {
-            let servicos = db.pesquisar_servicos(&termo)
+            let servicos = db
+                .pesquisar_servicos(&termo)
                 .context("Falha ao pesquisar serviços")?;
 
             if servicos.is_empty() {
@@ -76,7 +84,15 @@ pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
             println!("{table}");
             println!("\n{} resultado(s) para '{termo}'", servicos.len());
         }
-        ServicoCommands::Edit { id, nome, dominio, categoria_id, sem_categoria, url, descricao } => {
+        ServicoCommands::Edit {
+            id,
+            nome,
+            dominio,
+            categoria_id,
+            sem_categoria,
+            url,
+            descricao,
+        } => {
             if nome.is_none()
                 && dominio.is_none()
                 && categoria_id.is_none()
@@ -86,11 +102,14 @@ pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
             {
                 anyhow::bail!("Nada para alterar. Use --help para ver os campos editáveis.");
             }
-            let atual = db.buscar_servico(id)
-                .context("Serviço não encontrado")?;
+            let atual = db.buscar_servico(id).context("Serviço não encontrado")?;
 
             let dados = NovoServico {
-                categoria_id: if sem_categoria { None } else { categoria_id.or(atual.categoria_id) },
+                categoria_id: if sem_categoria {
+                    None
+                } else {
+                    categoria_id.or(atual.categoria_id)
+                },
                 nome: nome.unwrap_or(atual.nome),
                 dominio_principal: dominio.unwrap_or(atual.dominio_principal),
                 url_principal: match url {
@@ -108,8 +127,7 @@ pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
         }
         ServicoCommands::Url(cmd) => return super::url::execute(&db, cmd),
         ServicoCommands::Delete { id, sim } => {
-            let servico = db.buscar_servico(id)
-                .context("Serviço não encontrado")?;
+            let servico = db.buscar_servico(id).context("Serviço não encontrado")?;
 
             let credenciais = db.contar_credenciais_servico(id)?;
             if credenciais > 0 {
@@ -125,8 +143,7 @@ pub fn execute(db_path: &Path, cmd: ServicoCommands) -> Result<()> {
                 return Ok(());
             }
 
-            db.excluir_servico(id)
-                .context("Falha ao excluir serviço")?;
+            db.excluir_servico(id).context("Falha ao excluir serviço")?;
             println!("🗑️  Serviço '{}' excluído.", servico.nome);
         }
     }

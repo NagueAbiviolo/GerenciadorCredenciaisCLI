@@ -1,7 +1,7 @@
 //! Comando `cofre senha-mestre` — Altera a senha mestre do cofre.
 
-use std::path::Path;
 use anyhow::{Context, Result};
+use std::path::Path;
 
 use cofre_services::vault_service;
 

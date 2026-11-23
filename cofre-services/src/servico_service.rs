@@ -1,7 +1,7 @@
 //! Regras das URLs vinculadas a serviços (`url_servico`).
 
-use cofre_db::Database;
 use cofre_db::models::{NovaUrlServico, UrlServico};
+use cofre_db::Database;
 
 use crate::vault_service::VaultServiceError;
 
@@ -24,10 +24,14 @@ fn validar_url(url: &str) -> Result<(), VaultServiceError> {
     let resto = url
         .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
-        .ok_or_else(|| VaultServiceError::Invalido("a URL deve começar com http:// ou https://".into()))?;
+        .ok_or_else(|| {
+            VaultServiceError::Invalido("a URL deve começar com http:// ou https://".into())
+        })?;
     let host = resto.split(['/', '?', '#']).next().unwrap_or("");
     if host.is_empty() || url.chars().any(char::is_whitespace) {
-        return Err(VaultServiceError::Invalido(format!("URL inválida: '{url}'")));
+        return Err(VaultServiceError::Invalido(format!(
+            "URL inválida: '{url}'"
+        )));
     }
     Ok(())
 }
@@ -92,7 +96,13 @@ pub fn editar_url(db: &Database, id: i64, edicao: &EdicaoUrl<'_>) -> Result<(), 
     };
 
     let tx = db.conn.unchecked_transaction()?;
-    db.atualizar_url_servico(id, url, tipo, descricao, edicao.ativa.unwrap_or(atual.ativa))?;
+    db.atualizar_url_servico(
+        id,
+        url,
+        tipo,
+        descricao,
+        edicao.ativa.unwrap_or(atual.ativa),
+    )?;
     if edicao.padrao {
         db.definir_url_padrao(atual.servico_id, id)?;
     }
@@ -138,12 +148,28 @@ mod tests {
         let (_tmp, db, s) = db_com_servico("urls");
 
         let a = adicionar_url(&db, s, "https://github.com/login", "LOGIN", None, false).unwrap();
-        let b = adicionar_url(&db, s, "https://github.com/password_reset", "RECUPERACAO", None, false).unwrap();
+        let b = adicionar_url(
+            &db,
+            s,
+            "https://github.com/password_reset",
+            "RECUPERACAO",
+            None,
+            false,
+        )
+        .unwrap();
         // A primeira vira padrão sozinha; a segunda não.
         assert!(db.buscar_url_servico(a).unwrap().padrao);
         assert!(!db.buscar_url_servico(b).unwrap().padrao);
 
-        editar_url(&db, b, &EdicaoUrl { padrao: true, ..Default::default() }).unwrap();
+        editar_url(
+            &db,
+            b,
+            &EdicaoUrl {
+                padrao: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let urls = listar_urls(&db, s).unwrap();
         assert_eq!(urls.iter().filter(|u| u.padrao).count(), 1);
         assert_eq!(urls[0].id, b);

@@ -22,7 +22,11 @@ fn mapear_metodo(row: &Row<'_>) -> rusqlite::Result<MetodoAutenticacao> {
 }
 
 fn exigir_alteracao(alteradas: usize) -> Result<(), DbError> {
-    if alteradas == 0 { Err(DbError::NotFound) } else { Ok(()) }
+    if alteradas == 0 {
+        Err(DbError::NotFound)
+    } else {
+        Ok(())
+    }
 }
 
 impl Database {

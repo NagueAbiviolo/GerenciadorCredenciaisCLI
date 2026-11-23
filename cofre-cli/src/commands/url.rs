@@ -10,7 +10,13 @@ use super::{confirmar, vazio_para_none, UrlCommands};
 
 pub fn execute(db: &Database, cmd: UrlCommands) -> Result<()> {
     match cmd {
-        UrlCommands::Add { servico_id, url, tipo, descricao, padrao } => {
+        UrlCommands::Add {
+            servico_id,
+            url,
+            tipo,
+            descricao,
+            padrao,
+        } => {
             let id = servico_service::adicionar_url(
                 db,
                 servico_id,
@@ -23,7 +29,11 @@ pub fn execute(db: &Database, cmd: UrlCommands) -> Result<()> {
             let marcada = db.buscar_url_servico(id).map(|u| u.padrao).unwrap_or(false);
             println!(
                 "✅ URL adicionada com ID {id}{}.",
-                if marcada { " (padrão do serviço)" } else { "" }
+                if marcada {
+                    " (padrão do serviço)"
+                } else {
+                    ""
+                }
             );
         }
 
@@ -52,8 +62,16 @@ pub fn execute(db: &Database, cmd: UrlCommands) -> Result<()> {
             println!("\nTotal: {} URL(s)", urls.len());
         }
 
-        UrlCommands::Edit { id, url, tipo, descricao, padrao, ativa } => {
-            if url.is_none() && tipo.is_none() && descricao.is_none() && !padrao && ativa.is_none() {
+        UrlCommands::Edit {
+            id,
+            url,
+            tipo,
+            descricao,
+            padrao,
+            ativa,
+        } => {
+            if url.is_none() && tipo.is_none() && descricao.is_none() && !padrao && ativa.is_none()
+            {
                 anyhow::bail!("Nada para alterar. Use --help para ver os campos editáveis.");
             }
             let descricao = descricao.map(vazio_para_none);

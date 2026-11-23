@@ -142,7 +142,9 @@ impl Database {
 
     /// Exclui um serviço. Falha por chave estrangeira se ainda houver credenciais vinculadas.
     pub fn excluir_servico(&self, id: i64) -> Result<(), DbError> {
-        let alteradas = self.conn.execute("DELETE FROM servico WHERE id = ?1", params![id])?;
+        let alteradas = self
+            .conn
+            .execute("DELETE FROM servico WHERE id = ?1", params![id])?;
         if alteradas == 0 {
             return Err(DbError::NotFound);
         }

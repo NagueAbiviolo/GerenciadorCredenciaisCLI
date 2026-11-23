@@ -63,7 +63,12 @@ impl Database {
     }
 
     /// Atualiza uma categoria.
-    pub fn atualizar_categoria(&self, id: i64, nome: &str, descricao: Option<&str>) -> Result<(), DbError> {
+    pub fn atualizar_categoria(
+        &self,
+        id: i64,
+        nome: &str,
+        descricao: Option<&str>,
+    ) -> Result<(), DbError> {
         let alteradas = self.conn.execute(
             "UPDATE categoria SET nome = ?2, descricao = ?3, atualizado_em = datetime('now') WHERE id = ?1",
             params![id, nome, descricao],
@@ -76,7 +81,9 @@ impl Database {
 
     /// Exclui uma categoria. Os serviços vinculados ficam sem categoria (ON DELETE SET NULL).
     pub fn excluir_categoria(&self, id: i64) -> Result<(), DbError> {
-        let alteradas = self.conn.execute("DELETE FROM categoria WHERE id = ?1", params![id])?;
+        let alteradas = self
+            .conn
+            .execute("DELETE FROM categoria WHERE id = ?1", params![id])?;
         if alteradas == 0 {
             return Err(DbError::NotFound);
         }

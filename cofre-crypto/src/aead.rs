@@ -110,11 +110,11 @@ pub fn decrypt(
         aad: aad.as_bytes(),
     };
 
-    let plaintext = cipher
-        .decrypt(xnonce, payload)
-        .map_err(|_| CryptoError::DecryptionError(
+    let plaintext = cipher.decrypt(xnonce, payload).map_err(|_| {
+        CryptoError::DecryptionError(
             "Falha na autenticação: chave, nonce ou AAD incorretos, ou dados adulterados".into(),
-        ))?;
+        )
+    })?;
 
     // Nota: o chamador é responsável por zeroizar o Vec<u8> retornado após o uso.
     Ok(plaintext)
@@ -148,7 +148,11 @@ mod tests {
 
         let (nonce, ciphertext) = encrypt(&key, plaintext, &aad).unwrap();
 
-        assert_ne!(&ciphertext[..], plaintext, "Ciphertext não deve ser igual ao plaintext");
+        assert_ne!(
+            &ciphertext[..],
+            plaintext,
+            "Ciphertext não deve ser igual ao plaintext"
+        );
 
         let decrypted = decrypt(&key, &nonce, &ciphertext, &aad).unwrap();
         assert_eq!(&decrypted[..], plaintext);
@@ -165,7 +169,10 @@ mod tests {
 
         // Tentar decifrar com AAD diferente deve falhar (proteção contra swap de linhas)
         let result = decrypt(&key, &nonce, &ciphertext, &aad_errado);
-        assert!(result.is_err(), "Descriptografia com AAD diferente deve falhar");
+        assert!(
+            result.is_err(),
+            "Descriptografia com AAD diferente deve falhar"
+        );
     }
 
     #[test]
@@ -178,7 +185,10 @@ mod tests {
         let (nonce, ciphertext) = encrypt(&key, plaintext, &aad).unwrap();
 
         let result = decrypt(&wrong_key, &nonce, &ciphertext, &aad);
-        assert!(result.is_err(), "Descriptografia com chave errada deve falhar");
+        assert!(
+            result.is_err(),
+            "Descriptografia com chave errada deve falhar"
+        );
     }
 
     #[test]
@@ -212,6 +222,9 @@ mod tests {
         }
 
         let result = decrypt(&key, &nonce, &ciphertext, &aad);
-        assert!(result.is_err(), "Ciphertext adulterado deve falhar na autenticação");
+        assert!(
+            result.is_err(),
+            "Ciphertext adulterado deve falhar na autenticação"
+        );
     }
 }

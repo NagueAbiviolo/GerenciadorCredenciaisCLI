@@ -8,12 +8,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use arboard::Clipboard;
-use comfy_table::{Table, ContentArrangement};
+use comfy_table::{ContentArrangement, Table};
 use inquire::Text;
 use zeroize::Zeroizing;
 
-use cofre_db::Database;
 use cofre_db::models::Credencial;
+use cofre_db::Database;
 use cofre_services::vault_service::{self, EdicaoCredencial};
 
 use super::unlock::{self, pedir_senha_nova};
@@ -36,7 +36,14 @@ fn pedir_observacao() -> Result<Zeroizing<String>> {
 fn imprimir_tabela(db: &Database, credenciais: &[Credencial]) {
     let mut table = Table::new();
     table.set_content_arrangement(ContentArrangement::Dynamic);
-    table.set_header(vec!["ID", "Nome", "Identificador", "Serviço", "⭐", "Último uso"]);
+    table.set_header(vec![
+        "ID",
+        "Nome",
+        "Identificador",
+        "Serviço",
+        "⭐",
+        "Último uso",
+    ]);
 
     for c in credenciais {
         table.add_row(vec![
@@ -102,7 +109,8 @@ fn copiar_temporariamente(texto: &str, segundos: u64) -> Result<()> {
 
     let atual = cb.get_text().ok().map(Zeroizing::new);
     if atual.as_deref().map(String::as_str) == Some(texto) {
-        cb.clear().context("Falha ao limpar a área de transferência")?;
+        cb.clear()
+            .context("Falha ao limpar a área de transferência")?;
         println!("🧹 Área de transferência limpa.");
     } else {
         println!("ℹ️  O conteúdo da área de transferência mudou; nada foi apagado.");
@@ -115,7 +123,12 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
         CredencialCommands::Metodo(cmd) => return super::metodo::execute(db_path, cmd),
         CredencialCommands::Email(cmd) => return super::email::execute(db_path, cmd),
 
-        CredencialCommands::Add { servico_id, nome, identificador, observacao } => {
+        CredencialCommands::Add {
+            servico_id,
+            nome,
+            identificador,
+            observacao,
+        } => {
             let (db, vault, usuario_id) = unlock::unlock(db_path)?;
 
             // Valida o serviço antes de pedir a senha da credencial.
@@ -123,7 +136,11 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
                 .with_context(|| format!("Serviço #{servico_id} não encontrado"))?;
 
             let senha = pedir_senha_nova("Senha da credencial:", None)?;
-            let obs = if observacao { Some(pedir_observacao()?) } else { None };
+            let obs = if observacao {
+                Some(pedir_observacao()?)
+            } else {
+                None
+            };
 
             let id = vault_service::adicionar_credencial(
                 &db,
@@ -143,11 +160,15 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
         CredencialCommands::List { inativas } => {
             let (db, _vault, usuario_id) = unlock::unlock(db_path)?;
 
-            let credenciais = db.listar_credenciais(usuario_id, !inativas)
+            let credenciais = db
+                .listar_credenciais(usuario_id, !inativas)
                 .context("Falha ao listar credenciais")?;
 
             if credenciais.is_empty() {
-                println!("Nenhuma credencial {}encontrada.", if inativas { "inativa " } else { "" });
+                println!(
+                    "Nenhuma credencial {}encontrada.",
+                    if inativas { "inativa " } else { "" }
+                );
                 return Ok(());
             }
 
@@ -171,13 +192,28 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
             println!("│ Nome:          {}", cred.nome_exibicao);
             println!("│ Identificador: {}", cred.identificador);
             println!("│ Serviço:       {}", nome_servico(&db, cred.servico_id));
-            println!("│ Favorita:      {}", if cred.favorita { "⭐ Sim" } else { "Não" });
-            println!("│ Ativa:         {}", if cred.ativa { "Sim" } else { "Não" });
-            println!("│ Criada em:     {}", cred.criada_em.format("%d/%m/%Y %H:%M"));
-            println!("│ Última alt.:   {}", cred.alterada_em.format("%d/%m/%Y %H:%M"));
-            println!("│ Último uso:    {}", cred.ultimo_uso_em
-                .map(|d| d.format("%d/%m/%Y %H:%M").to_string())
-                .unwrap_or("-".into()));
+            println!(
+                "│ Favorita:      {}",
+                if cred.favorita { "⭐ Sim" } else { "Não" }
+            );
+            println!(
+                "│ Ativa:         {}",
+                if cred.ativa { "Sim" } else { "Não" }
+            );
+            println!(
+                "│ Criada em:     {}",
+                cred.criada_em.format("%d/%m/%Y %H:%M")
+            );
+            println!(
+                "│ Última alt.:   {}",
+                cred.alterada_em.format("%d/%m/%Y %H:%M")
+            );
+            println!(
+                "│ Último uso:    {}",
+                cred.ultimo_uso_em
+                    .map(|d| d.format("%d/%m/%Y %H:%M").to_string())
+                    .unwrap_or("-".into())
+            );
 
             let tem_observacao = cred.observacao_criptografada.is_some();
             if revelar {
@@ -202,25 +238,34 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
 
             println!("└─────────────────────────────────────────");
 
-            let metodos = db.listar_metodos_autenticacao(cred.id)
+            let metodos = db
+                .listar_metodos_autenticacao(cred.id)
                 .context("Falha ao listar métodos de autenticação")?;
             if !metodos.is_empty() {
                 println!("\n🔐 Métodos de autenticação:");
                 println!("{}", super::metodo::tabela_metodos(&metodos));
             }
 
-            let emails = db.listar_emails_recuperacao(cred.id)
+            let emails = db
+                .listar_emails_recuperacao(cred.id)
                 .context("Falha ao listar e-mails de recuperação")?;
             if !emails.is_empty() {
-                println!("\n📧 E-mails de recuperação{}:", if revelar { "" } else { " (mascarados)" });
-                println!("{}", super::email::tabela_emails(&vault, usuario_id, &emails, revelar)?);
+                println!(
+                    "\n📧 E-mails de recuperação{}:",
+                    if revelar { "" } else { " (mascarados)" }
+                );
+                println!(
+                    "{}",
+                    super::email::tabela_emails(&vault, usuario_id, &emails, revelar)?
+                );
             }
         }
 
         CredencialCommands::Search { termo } => {
             let (db, _vault, usuario_id) = unlock::unlock(db_path)?;
 
-            let credenciais = db.pesquisar_credenciais(usuario_id, &termo)
+            let credenciais = db
+                .pesquisar_credenciais(usuario_id, &termo)
                 .context("Falha ao pesquisar credenciais")?;
 
             if credenciais.is_empty() {
@@ -274,7 +319,11 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
             } else {
                 None
             };
-            let nova_obs = if observacao { Some(pedir_observacao()?) } else { None };
+            let nova_obs = if observacao {
+                Some(pedir_observacao()?)
+            } else {
+                None
+            };
 
             let edicao = EdicaoCredencial {
                 nome_exibicao: nome.as_deref(),
@@ -297,7 +346,9 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
             let (db, _vault, usuario_id) = unlock::unlock(db_path)?;
             vault_service::definir_credencial_ativa(&db, usuario_id, id, false)
                 .context("Falha ao desativar credencial")?;
-            println!("⏸️  Credencial #{id} desativada. Use 'credencial activate {id}' para reativar.");
+            println!(
+                "⏸️  Credencial #{id} desativada. Use 'credencial activate {id}' para reativar."
+            );
         }
 
         CredencialCommands::Activate { id } => {

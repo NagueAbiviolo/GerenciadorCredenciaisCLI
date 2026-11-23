@@ -45,8 +45,7 @@ impl Database {
         let mut db = Self { conn };
 
         // Executar migrações
-        migrations::run(&mut db.conn)
-            .map_err(|e| DbError::Migration(e.to_string()))?;
+        migrations::run(&mut db.conn).map_err(|e| DbError::Migration(e.to_string()))?;
 
         Ok(db)
     }
@@ -63,8 +62,7 @@ impl Database {
 
         let mut db = Self { conn };
 
-        migrations::run(&mut db.conn)
-            .map_err(|e| DbError::Migration(e.to_string()))?;
+        migrations::run(&mut db.conn).map_err(|e| DbError::Migration(e.to_string()))?;
 
         Ok(db)
     }

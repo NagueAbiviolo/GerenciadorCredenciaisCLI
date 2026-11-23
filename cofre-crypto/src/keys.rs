@@ -157,7 +157,7 @@ pub fn change_master_password(
 
     // Cifrar a DEK com a nova KEK
     let (dek_nonce, encrypted_dek) = aead::encrypt_dek(&kdf_output.derived_key, &dek_copy)?;
-    
+
     kdf_output.derived_key.zeroize();
 
     let kdf_params_json = serde_json::to_string(params)?;

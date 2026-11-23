@@ -1,11 +1,11 @@
 //! Serviço do cofre: orquestra inicialização, desbloqueio e operações com credenciais.
 
 use cofre_crypto::aead;
-use cofre_crypto::keys::{self, UnlockedVault};
 use cofre_crypto::kdf::KdfParams;
-use cofre_db::Database;
+use cofre_crypto::keys::{self, UnlockedVault};
 use cofre_db::connection::DbError;
 use cofre_db::models::{Credencial, NovaCredencial};
+use cofre_db::Database;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -79,7 +79,10 @@ pub fn init_vault_com_params(
 }
 
 /// Desbloqueia o cofre e retorna a sessão com a DEK em memória protegida.
-pub fn unlock_vault(db: &Database, password: &[u8]) -> Result<(UnlockedVault, i64), VaultServiceError> {
+pub fn unlock_vault(
+    db: &Database,
+    password: &[u8],
+) -> Result<(UnlockedVault, i64), VaultServiceError> {
     let usuario = db.buscar_usuario_ativo().map_err(|e| match e {
         DbError::NotFound => VaultServiceError::NotInitialized,
         other => VaultServiceError::Db(other),
@@ -114,8 +117,8 @@ pub fn alterar_senha_mestre(
     if usuario.id != usuario_id {
         return Err(VaultServiceError::Db(DbError::NotFound));
     }
-    let params: KdfParams = serde_json::from_str(&usuario.parametros_kdf)
-        .map_err(cofre_crypto::CryptoError::from)?;
+    let params: KdfParams =
+        serde_json::from_str(&usuario.parametros_kdf).map_err(cofre_crypto::CryptoError::from)?;
 
     let novos = keys::change_master_password(vault, nova_senha, &params)?;
 
@@ -146,11 +149,21 @@ pub fn buscar_credencial(
 }
 
 fn aad_segredo(credencial_id: i64, usuario_id: i64) -> String {
-    aead::build_aad("credencial", "segredo_criptografado", credencial_id, usuario_id)
+    aead::build_aad(
+        "credencial",
+        "segredo_criptografado",
+        credencial_id,
+        usuario_id,
+    )
 }
 
 fn aad_observacao(credencial_id: i64, usuario_id: i64) -> String {
-    aead::build_aad("credencial", "observacao_criptografada", credencial_id, usuario_id)
+    aead::build_aad(
+        "credencial",
+        "observacao_criptografada",
+        credencial_id,
+        usuario_id,
+    )
 }
 
 /// Cifra e grava a senha de uma credencial existente.
@@ -235,7 +248,8 @@ pub fn editar_credencial(
     let atual = buscar_credencial(db, credencial_id, usuario_id)?;
     let tx = db.conn.unchecked_transaction()?;
 
-    if edicao.nome_exibicao.is_some() || edicao.identificador.is_some() || edicao.favorita.is_some() {
+    if edicao.nome_exibicao.is_some() || edicao.identificador.is_some() || edicao.favorita.is_some()
+    {
         db.atualizar_dados_credencial(
             credencial_id,
             edicao.nome_exibicao.unwrap_or(&atual.nome_exibicao),
@@ -342,14 +356,36 @@ pub(crate) mod tests {
 
         assert!(unlock_vault(&db, b"senha-errada").is_err());
 
-        let a = adicionar_credencial(&db, &vault, usuario_id, servico_id, "A", "a@x.com", b"senha-a", Some("nota a")).unwrap();
-        let b = adicionar_credencial(&db, &vault, usuario_id, servico_id, "B", "b@x.com", b"senha-b", None).unwrap();
+        let a = adicionar_credencial(
+            &db,
+            &vault,
+            usuario_id,
+            servico_id,
+            "A",
+            "a@x.com",
+            b"senha-a",
+            Some("nota a"),
+        )
+        .unwrap();
+        let b = adicionar_credencial(
+            &db, &vault, usuario_id, servico_id, "B", "b@x.com", b"senha-b", None,
+        )
+        .unwrap();
 
-        assert_eq!(revelar_senha(&db, &vault, a, usuario_id).unwrap(), b"senha-a");
-        assert_eq!(revelar_senha(&db, &vault, b, usuario_id).unwrap(), b"senha-b");
+        assert_eq!(
+            revelar_senha(&db, &vault, a, usuario_id).unwrap(),
+            b"senha-a"
+        );
+        assert_eq!(
+            revelar_senha(&db, &vault, b, usuario_id).unwrap(),
+            b"senha-b"
+        );
 
         let cred_a = db.buscar_credencial(a).unwrap();
-        assert_eq!(revelar_observacao(&vault, &cred_a).unwrap().unwrap(), b"nota a");
+        assert_eq!(
+            revelar_observacao(&vault, &cred_a).unwrap().unwrap(),
+            b"nota a"
+        );
         let cred_b = db.buscar_credencial(b).unwrap();
         assert!(revelar_observacao(&vault, &cred_b).unwrap().is_none());
 
@@ -363,27 +399,52 @@ pub(crate) mod tests {
     fn test_editar_credencial() {
         let tmp = DbTemp::new("editar");
         let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
-        let id = adicionar_credencial(&db, &vault, usuario_id, servico_id, "A", "a@x.com", b"antiga", Some("nota")).unwrap();
+        let id = adicionar_credencial(
+            &db,
+            &vault,
+            usuario_id,
+            servico_id,
+            "A",
+            "a@x.com",
+            b"antiga",
+            Some("nota"),
+        )
+        .unwrap();
 
         // Só o nome muda; o resto é preservado.
-        editar_credencial(&db, &vault, usuario_id, id, &EdicaoCredencial {
-            nome_exibicao: Some("Novo nome"),
-            ..Default::default()
-        })
+        editar_credencial(
+            &db,
+            &vault,
+            usuario_id,
+            id,
+            &EdicaoCredencial {
+                nome_exibicao: Some("Novo nome"),
+                ..Default::default()
+            },
+        )
         .unwrap();
         let cred = db.buscar_credencial(id).unwrap();
         assert_eq!(cred.nome_exibicao, "Novo nome");
         assert_eq!(cred.identificador, "a@x.com");
         assert!(!cred.favorita);
-        assert_eq!(revelar_senha(&db, &vault, id, usuario_id).unwrap(), b"antiga");
+        assert_eq!(
+            revelar_senha(&db, &vault, id, usuario_id).unwrap(),
+            b"antiga"
+        );
 
-        editar_credencial(&db, &vault, usuario_id, id, &EdicaoCredencial {
-            identificador: Some("b@x.com"),
-            favorita: Some(true),
-            senha: Some(b"nova"),
-            observacao: Some(None),
-            ..Default::default()
-        })
+        editar_credencial(
+            &db,
+            &vault,
+            usuario_id,
+            id,
+            &EdicaoCredencial {
+                identificador: Some("b@x.com"),
+                favorita: Some(true),
+                senha: Some(b"nova"),
+                observacao: Some(None),
+                ..Default::default()
+            },
+        )
         .unwrap();
         let cred = db.buscar_credencial(id).unwrap();
         assert_eq!(cred.identificador, "b@x.com");
@@ -396,7 +457,10 @@ pub(crate) mod tests {
     fn test_desativar_reativar_e_excluir() {
         let tmp = DbTemp::new("ciclo");
         let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
-        let id = adicionar_credencial(&db, &vault, usuario_id, servico_id, "A", "a@x.com", b"s", None).unwrap();
+        let id = adicionar_credencial(
+            &db, &vault, usuario_id, servico_id, "A", "a@x.com", b"s", None,
+        )
+        .unwrap();
 
         definir_credencial_ativa(&db, usuario_id, id, false).unwrap();
         assert!(db.listar_credenciais(usuario_id, true).unwrap().is_empty());
@@ -417,7 +481,10 @@ pub(crate) mod tests {
     fn test_outro_usuario_nao_acessa_credencial() {
         let tmp = DbTemp::new("dono");
         let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
-        let id = adicionar_credencial(&db, &vault, usuario_id, servico_id, "A", "a@x.com", b"s", None).unwrap();
+        let id = adicionar_credencial(
+            &db, &vault, usuario_id, servico_id, "A", "a@x.com", b"s", None,
+        )
+        .unwrap();
 
         let outro = usuario_id + 1;
         assert!(revelar_senha(&db, &vault, id, outro).is_err());
@@ -429,12 +496,18 @@ pub(crate) mod tests {
     fn test_alterar_senha_mestre_preserva_credenciais() {
         let tmp = DbTemp::new("senha-mestre");
         let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
-        let id = adicionar_credencial(&db, &vault, usuario_id, servico_id, "A", "a@x.com", b"segredo", None).unwrap();
+        let id = adicionar_credencial(
+            &db, &vault, usuario_id, servico_id, "A", "a@x.com", b"segredo", None,
+        )
+        .unwrap();
 
         alterar_senha_mestre(&db, &vault, usuario_id, b"nova-senha-mestre").unwrap();
 
         assert!(unlock_vault(&db, b"senha-mestre-forte").is_err());
         let (novo_vault, _) = unlock_vault(&db, b"nova-senha-mestre").unwrap();
-        assert_eq!(revelar_senha(&db, &novo_vault, id, usuario_id).unwrap(), b"segredo");
+        assert_eq!(
+            revelar_senha(&db, &novo_vault, id, usuario_id).unwrap(),
+            b"segredo"
+        );
     }
 }

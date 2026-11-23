@@ -5,15 +5,22 @@
 
 use cofre_crypto::aead;
 use cofre_crypto::keys::UnlockedVault;
-use cofre_db::Database;
 use cofre_db::connection::DbError;
 use cofre_db::models::{EmailRecuperacao, MetodoAutenticacao, NovoMetodoAutenticacao};
+use cofre_db::Database;
 
 use crate::vault_service::{buscar_credencial, VaultServiceError};
 
 /// Tipos aceitos pela coluna `metodo_autenticacao.tipo`.
-pub const TIPOS_METODO: [&str; 7] =
-    ["SENHA", "TOTP", "SMS", "EMAIL", "PASSKEY", "BIOMETRIA", "APLICATIVO"];
+pub const TIPOS_METODO: [&str; 7] = [
+    "SENHA",
+    "TOTP",
+    "SMS",
+    "EMAIL",
+    "PASSKEY",
+    "BIOMETRIA",
+    "APLICATIVO",
+];
 
 /// Alterações possíveis em um método. Campos `None` não são alterados.
 #[derive(Default)]
@@ -61,7 +68,9 @@ fn validar_email(email: &str) -> Result<(), VaultServiceError> {
     if valido {
         Ok(())
     } else {
-        Err(VaultServiceError::Invalido("e-mail com formato inválido".into()))
+        Err(VaultServiceError::Invalido(
+            "e-mail com formato inválido".into(),
+        ))
     }
 }
 
@@ -167,7 +176,12 @@ pub fn excluir_metodo(
 // ------------------------------------------------------------------
 
 fn aad_email(email_id: i64, usuario_id: i64) -> String {
-    aead::build_aad("email_recuperacao", "email_criptografado", email_id, usuario_id)
+    aead::build_aad(
+        "email_recuperacao",
+        "email_criptografado",
+        email_id,
+        usuario_id,
+    )
 }
 
 fn gravar_email(
@@ -292,7 +306,9 @@ pub fn excluir_email(
 mod tests {
     use super::*;
     use crate::testes::DbTemp;
-    use crate::vault_service::{adicionar_credencial, excluir_credencial, tests::cofre_com_servico};
+    use crate::vault_service::{
+        adicionar_credencial, excluir_credencial, tests::cofre_com_servico,
+    };
 
     #[test]
     fn test_metodos_principal_unico() {
@@ -308,12 +324,17 @@ mod tests {
         assert_eq!(metodos[0].id, totp);
         assert!(metodos[0].configurado_em.is_some());
 
-        editar_metodo(&db, u, senha, &EdicaoMetodo {
-            principal: Some(true),
-            habilitado: Some(false),
-            descricao: Some(Some("antiga")),
-            ..Default::default()
-        })
+        editar_metodo(
+            &db,
+            u,
+            senha,
+            &EdicaoMetodo {
+                principal: Some(true),
+                habilitado: Some(false),
+                descricao: Some(Some("antiga")),
+                ..Default::default()
+            },
+        )
         .unwrap();
         let m = db.buscar_metodo_autenticacao(senha).unwrap();
         assert!(m.principal && !m.habilitado);
@@ -345,13 +366,35 @@ mod tests {
 
         // Trocar o e-mail cifrado de linha é detectado pela AAD.
         let eb = db.buscar_email_recuperacao(b).unwrap();
-        db.definir_email_recuperacao_cifrado(a, &eb.email_criptografado, &eb.nonce).unwrap();
+        db.definir_email_recuperacao_cifrado(a, &eb.email_criptografado, &eb.nonce)
+            .unwrap();
         let ea = db.buscar_email_recuperacao(a).unwrap();
         assert!(revelar_email(&vault, u, &ea).is_err());
 
         // Novo endereço zera a verificação; principal passa para B.
-        editar_email(&db, &vault, u, a, &EdicaoEmail { email: Some("novo@exemplo.com"), ..Default::default() }).unwrap();
-        editar_email(&db, &vault, u, b, &EdicaoEmail { principal: Some(true), ativo: Some(false), ..Default::default() }).unwrap();
+        editar_email(
+            &db,
+            &vault,
+            u,
+            a,
+            &EdicaoEmail {
+                email: Some("novo@exemplo.com"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        editar_email(
+            &db,
+            &vault,
+            u,
+            b,
+            &EdicaoEmail {
+                principal: Some(true),
+                ativo: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let ea = db.buscar_email_recuperacao(a).unwrap();
         let eb = db.buscar_email_recuperacao(b).unwrap();
         assert_eq!(revelar_email(&vault, u, &ea).unwrap(), b"novo@exemplo.com");
@@ -359,12 +402,18 @@ mod tests {
         assert!(eb.principal && !eb.ativo);
 
         for invalido in ["semarroba", "@x.com", "a@b", "a@.com", "a b@x.com"] {
-            assert!(adicionar_email(&db, &vault, u, c, invalido, false, false).is_err(), "{invalido}");
+            assert!(
+                adicionar_email(&db, &vault, u, c, invalido, false, false).is_err(),
+                "{invalido}"
+            );
         }
         assert!(buscar_email(&db, u + 1, a).is_err());
 
         // Excluir a credencial remove os e-mails em cascata.
         excluir_credencial(&db, u, c).unwrap();
-        assert!(matches!(db.buscar_email_recuperacao(b), Err(DbError::NotFound)));
+        assert!(matches!(
+            db.buscar_email_recuperacao(b),
+            Err(DbError::NotFound)
+        ));
     }
 }

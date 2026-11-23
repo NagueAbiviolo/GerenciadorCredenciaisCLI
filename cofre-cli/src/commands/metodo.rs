@@ -15,7 +15,14 @@ use super::{confirmar, vazio_para_none, MetodoCommands};
 pub fn tabela_metodos(metodos: &[MetodoAutenticacao]) -> Table {
     let mut table = Table::new();
     table.set_content_arrangement(ContentArrangement::Dynamic);
-    table.set_header(vec!["ID", "Tipo", "Descrição", "Principal", "Habilitado", "Configurado em"]);
+    table.set_header(vec![
+        "ID",
+        "Tipo",
+        "Descrição",
+        "Principal",
+        "Habilitado",
+        "Configurado em",
+    ]);
     for m in metodos {
         table.add_row(vec![
             m.id.to_string(),
@@ -33,14 +40,26 @@ pub fn tabela_metodos(metodos: &[MetodoAutenticacao]) -> Table {
 
 pub fn execute(db_path: &Path, cmd: MetodoCommands) -> Result<()> {
     // Sem argumentos de edição, falha antes de pedir a senha mestre.
-    if let MetodoCommands::Edit { tipo: None, descricao: None, principal: None, habilitado: None, .. } = cmd {
+    if let MetodoCommands::Edit {
+        tipo: None,
+        descricao: None,
+        principal: None,
+        habilitado: None,
+        ..
+    } = cmd
+    {
         anyhow::bail!("Nada para alterar. Use --help para ver os campos editáveis.");
     }
 
     let (db, _vault, usuario_id) = unlock::unlock(db_path)?;
 
     match cmd {
-        MetodoCommands::Add { credencial_id, tipo, descricao, principal } => {
+        MetodoCommands::Add {
+            credencial_id,
+            tipo,
+            descricao,
+            principal,
+        } => {
             let id = autenticacao_service::adicionar_metodo(
                 &db,
                 usuario_id,
@@ -50,21 +69,32 @@ pub fn execute(db_path: &Path, cmd: MetodoCommands) -> Result<()> {
                 principal,
             )
             .context("Falha ao adicionar método de autenticação")?;
-            println!("✅ Método {} adicionado à credencial #{credencial_id} com ID {id}.", tipo.como_db());
+            println!(
+                "✅ Método {} adicionado à credencial #{credencial_id} com ID {id}.",
+                tipo.como_db()
+            );
         }
 
         MetodoCommands::List { credencial_id } => {
             let metodos = autenticacao_service::listar_metodos(&db, usuario_id, credencial_id)
                 .context("Falha ao listar métodos de autenticação")?;
             if metodos.is_empty() {
-                println!("Nenhum método de autenticação cadastrado para a credencial #{credencial_id}.");
+                println!(
+                    "Nenhum método de autenticação cadastrado para a credencial #{credencial_id}."
+                );
                 return Ok(());
             }
             println!("{}", tabela_metodos(&metodos));
             println!("\nTotal: {} método(s)", metodos.len());
         }
 
-        MetodoCommands::Edit { id, tipo, descricao, principal, habilitado } => {
+        MetodoCommands::Edit {
+            id,
+            tipo,
+            descricao,
+            principal,
+            habilitado,
+        } => {
             let descricao = descricao.map(vazio_para_none);
             let edicao = EdicaoMetodo {
                 tipo: tipo.map(|t| t.como_db()),

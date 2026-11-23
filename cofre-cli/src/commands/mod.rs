@@ -1,20 +1,20 @@
 //! Definição dos comandos CLI com clap.
 
-pub mod init;
-pub mod unlock;
-pub mod credencial;
 pub mod categoria;
-pub mod servico;
-pub mod senha_mestre;
-pub mod url;
-pub mod metodo;
+pub mod credencial;
 pub mod email;
+pub mod init;
+pub mod metodo;
+pub mod senha_mestre;
+pub mod servico;
+pub mod unlock;
+pub mod url;
 
-use clap::{Parser, Subcommand, ValueEnum};
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use clap::{Parser, Subcommand, ValueEnum};
 use directories::ProjectDirs;
 use inquire::Confirm;
+use std::path::PathBuf;
 
 /// Gerenciador Pessoal de Credenciais — CLI
 #[derive(Parser)]
@@ -483,7 +483,11 @@ pub fn confirmar(mensagem: &str, sim: bool) -> Result<bool> {
 
 /// Converte texto vazio em `None` (usado para remover campos opcionais na edição).
 pub fn vazio_para_none(valor: String) -> Option<String> {
-    if valor.trim().is_empty() { None } else { Some(valor) }
+    if valor.trim().is_empty() {
+        None
+    } else {
+        Some(valor)
+    }
 }
 
 /// Executa o comando selecionado.

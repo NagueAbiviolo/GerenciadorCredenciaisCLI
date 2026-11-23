@@ -59,8 +59,6 @@ pub struct KdfOutput {
     pub verifier_salt: Vec<u8>,
 }
 
-
-
 /// Gera um salt aleatório criptograficamente seguro.
 pub fn generate_salt() -> Result<Vec<u8>, CryptoError> {
     let mut salt = vec![0u8; SALT_LEN];
@@ -72,8 +70,13 @@ pub fn generate_salt() -> Result<Vec<u8>, CryptoError> {
 
 /// Constrói uma instância de Argon2 a partir dos parâmetros fornecidos.
 fn build_argon2(params: &KdfParams) -> Result<(Argon2<'_>, Params), CryptoError> {
-    let argon2_params = Params::new(params.m_cost_kib, params.t_cost, params.p_cost, Some(KEY_LEN))
-        .map_err(|e| CryptoError::InvalidKdfParams(e.to_string()))?;
+    let argon2_params = Params::new(
+        params.m_cost_kib,
+        params.t_cost,
+        params.p_cost,
+        Some(KEY_LEN),
+    )
+    .map_err(|e| CryptoError::InvalidKdfParams(e.to_string()))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, argon2_params.clone());
     Ok((argon2, argon2_params))
 }
@@ -177,13 +180,18 @@ mod tests {
         let output = derive_new(password, &params).unwrap();
 
         // Verificação com senha correta deve passar
-        assert!(verify_password(password, &output.verifier_salt, &output.verifier, &params).is_ok());
+        assert!(
+            verify_password(password, &output.verifier_salt, &output.verifier, &params).is_ok()
+        );
 
         // Verificação com senha errada deve falhar
-        assert!(
-            verify_password(b"senha-errada", &output.verifier_salt, &output.verifier, &params)
-                .is_err()
-        );
+        assert!(verify_password(
+            b"senha-errada",
+            &output.verifier_salt,
+            &output.verifier,
+            &params
+        )
+        .is_err());
     }
 
     #[test]
@@ -199,7 +207,10 @@ mod tests {
         let key1 = derive_key(password, &salt, &params).unwrap();
         let key2 = derive_key(password, &salt, &params).unwrap();
 
-        assert_eq!(key1, key2, "Mesma senha e salt devem produzir a mesma chave");
+        assert_eq!(
+            key1, key2,
+            "Mesma senha e salt devem produzir a mesma chave"
+        );
     }
 
     #[test]

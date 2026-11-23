@@ -63,7 +63,11 @@ impl Database {
     }
 
     /// Lista as credenciais de um usuário (ativas ou inativas, conforme `ativas`).
-    pub fn listar_credenciais(&self, usuario_id: i64, ativas: bool) -> Result<Vec<Credencial>, DbError> {
+    pub fn listar_credenciais(
+        &self,
+        usuario_id: i64,
+        ativas: bool,
+    ) -> Result<Vec<Credencial>, DbError> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {COLUNAS}
              FROM credencial c
