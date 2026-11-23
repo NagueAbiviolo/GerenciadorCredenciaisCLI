@@ -57,8 +57,6 @@ pub struct KdfOutput {
     pub verifier: Vec<u8>,
     /// Salt separado usado para gerar o verificador.
     pub verifier_salt: Vec<u8>,
-    /// Guard do mlock que mantém `derived_key` fora do swap enquanto existir.
-    pub(crate) kek_lock: Option<region::LockGuard>,
 }
 
 /// Gera um salt aleatório criptograficamente seguro.
@@ -97,10 +95,9 @@ pub fn derive_new(password: &[u8], params: &KdfParams) -> Result<KdfOutput, Cryp
 
     // Derivar KEK em buffer bloqueado com mlock (tamanho fixo, sem realocação)
     let mut derived_key = vec![0u8; KEY_LEN];
-    let kek_lock = crate::protecao::trancar_memoria(&derived_key);
+    crate::protecao::trancar_memoria(&derived_key);
     if let Err(e) = argon2.hash_password_into(password, &salt, &mut derived_key) {
         derived_key.zeroize();
-        drop(kek_lock);
         return Err(CryptoError::KdfError(e.to_string()));
     }
 
@@ -108,7 +105,6 @@ pub fn derive_new(password: &[u8], params: &KdfParams) -> Result<KdfOutput, Cryp
     let mut verifier = vec![0u8; KEY_LEN];
     if let Err(e) = argon2.hash_password_into(password, &verifier_salt, &mut verifier) {
         derived_key.zeroize();
-        drop(kek_lock);
         return Err(CryptoError::KdfError(e.to_string()));
     }
 
@@ -117,27 +113,25 @@ pub fn derive_new(password: &[u8], params: &KdfParams) -> Result<KdfOutput, Cryp
         derived_key,
         verifier,
         verifier_salt,
-        kek_lock,
     })
 }
 
 /// Deriva a KEK mantendo o buffer bloqueado em RAM (`mlock`).
 ///
-/// Retorna o buffer da KEK e o `LockGuard` correspondente.
+/// Retorna o buffer da KEK.
 pub(crate) fn derive_key_locked(
     password: &[u8],
     salt: &[u8],
     params: &KdfParams,
-) -> Result<(Vec<u8>, Option<region::LockGuard>), CryptoError> {
+) -> Result<Vec<u8>, CryptoError> {
     let (argon2, _) = build_argon2(params)?;
     let mut derived_key = vec![0u8; KEY_LEN];
-    let lock = crate::protecao::trancar_memoria(&derived_key);
+    crate::protecao::trancar_memoria(&derived_key);
     if let Err(e) = argon2.hash_password_into(password, salt, &mut derived_key) {
         derived_key.zeroize();
-        drop(lock);
         return Err(CryptoError::KdfError(e.to_string()));
     }
-    Ok((derived_key, lock))
+    Ok(derived_key)
 }
 
 /// Deriva a KEK a partir da senha mestre e do salt existente.
@@ -148,8 +142,7 @@ pub fn derive_key(
     salt: &[u8],
     params: &KdfParams,
 ) -> Result<Vec<u8>, CryptoError> {
-    let (derived_key, _lock) = derive_key_locked(password, salt, params)?;
-    Ok(derived_key)
+    derive_key_locked(password, salt, params)
 }
 
 /// Verifica a senha mestre contra o verificador armazenado.

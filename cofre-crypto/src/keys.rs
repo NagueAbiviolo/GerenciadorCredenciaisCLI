@@ -39,19 +39,10 @@ pub struct VaultInit {
 /// Sessão de cofre desbloqueado.
 ///
 /// Mantém a DEK em memória protegida (`SecretBox`) e bloqueada na RAM (`mlock`)
-/// durante a sessão. Ao ser descartada, a memória é desbloqueada e zeroizada.
+/// durante a sessão. Ao ser descartada, a memória é zeroizada.
 pub struct UnlockedVault {
     /// DEK em memória protegida (tamanho fixo de 32 bytes, sem realocação).
     dek: SecretBox<Vec<u8>>,
-    /// Guard do mlock da DEK.
-    lock: Option<region::LockGuard>,
-}
-
-impl Drop for UnlockedVault {
-    fn drop(&mut self) {
-        // Desbloqueia o buffer antes de o SecretBox zeroizar e liberar o Vec.
-        self.lock.take();
-    }
 }
 
 impl UnlockedVault {
@@ -85,10 +76,9 @@ impl UnlockedVault {
 pub fn init_vault(password: &[u8], params: &KdfParams) -> Result<VaultInit, CryptoError> {
     // 1. Gerar DEK aleatória em buffer bloqueado com mlock
     let mut dek = vec![0u8; DEK_LEN];
-    let dek_lock = protecao::trancar_memoria(&dek);
+    protecao::trancar_memoria(&dek);
     if let Err(e) = rand::thread_rng().try_fill_bytes(&mut dek) {
         dek.zeroize();
-        drop(dek_lock);
         return Err(CryptoError::RandomError(e.to_string()));
     }
 
@@ -97,7 +87,6 @@ pub fn init_vault(password: &[u8], params: &KdfParams) -> Result<VaultInit, Cryp
         Ok(out) => out,
         Err(e) => {
             dek.zeroize();
-            drop(dek_lock);
             return Err(e);
         }
     };
@@ -105,11 +94,9 @@ pub fn init_vault(password: &[u8], params: &KdfParams) -> Result<VaultInit, Cryp
     // 3. Cifrar a DEK com a KEK
     let encrypt_res = aead::encrypt_dek(&kdf_output.derived_key, &dek);
 
-    // Zeroizar a DEK e a KEK em texto puro antes de desbloquear (munlock)
+    // Zeroizar a DEK e a KEK em texto puro
     dek.zeroize();
-    drop(dek_lock);
     kdf_output.derived_key.zeroize();
-    drop(kdf_output.kek_lock);
 
     let (dek_nonce, encrypted_dek) = encrypt_res?;
 
@@ -152,22 +139,21 @@ pub fn unlock_vault(
     kdf::verify_password(password, verifier_salt, expected_verifier, &params)?;
 
     // 3. Derivar KEK (com mlock)
-    let (mut kek, kek_lock) = kdf::derive_key_locked(password, kek_salt, &params)?;
+    let mut kek = kdf::derive_key_locked(password, kek_salt, &params)?;
 
     // 4. Decifrar a DEK
     let dek_res = aead::decrypt_dek(&kek, dek_nonce, encrypted_dek);
 
-    // 5. Zeroizar e desbloquear a KEK (não precisamos mais dela)
+    // 5. Zeroizar a KEK (não precisamos mais dela)
     kek.zeroize();
-    drop(kek_lock);
 
     let dek_bytes = dek_res?;
 
     // 6. Encapsular a DEK em SecretBox e bloquear o buffer na RAM (o Vec não realoca mais)
     let dek = SecretBox::new(Box::new(dek_bytes));
-    let lock = protecao::trancar_memoria(dek.expose_secret());
+    protecao::trancar_memoria(dek.expose_secret());
 
-    Ok(UnlockedVault { dek, lock })
+    Ok(UnlockedVault { dek })
 }
 
 /// Altera a senha mestre sem recifrar as credenciais.
@@ -185,7 +171,6 @@ pub fn change_master_password(
     let encrypt_res = aead::encrypt_dek(&kdf_output.derived_key, vault.dek());
 
     kdf_output.derived_key.zeroize();
-    drop(kdf_output.kek_lock);
 
     let (dek_nonce, encrypted_dek) = encrypt_res?;
 

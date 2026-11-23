@@ -7,18 +7,28 @@
 
 /// Bloqueia um buffer na RAM (`mlock` / `VirtualLock`) para impedir que vá para o swap.
 ///
-/// Retorna um [`region::LockGuard`] que desbloqueia a região automaticamente no `Drop`.
-/// Caso o bloqueio falhe (por exemplo, limite `RLIMIT_MEMLOCK` baixo no sistema),
-/// registra um aviso com `tracing::warn!` e retorna `None`, sem impedir o uso do cofre.
-pub fn trancar_memoria(buf: &[u8]) -> Option<region::LockGuard> {
+/// O bloqueio vale para **páginas inteiras**, não para o buffer: dois buffers
+/// pequenos podem dividir a mesma página. Por isso a região **nunca é
+/// desbloqueada**. Desbloquear a página da KEK temporária poderia liberar
+/// também a página da DEK, e no Windows `VirtualUnlock` falha em páginas já
+/// desbloqueadas. As páginas ficam travadas até o processo terminar, o que
+/// custa poucos KiB.
+///
+/// Retorna `true` se o bloqueio funcionou. Se falhar (por exemplo, limite
+/// `RLIMIT_MEMLOCK` baixo), registra um aviso e retorna `false`, sem impedir o uso do cofre.
+pub fn trancar_memoria(buf: &[u8]) -> bool {
     if buf.is_empty() {
-        return None;
+        return false;
     }
     match region::lock(buf.as_ptr(), buf.len()) {
-        Ok(guard) => Some(guard),
+        Ok(guard) => {
+            // Intencional: não desbloquear (ver documentação acima).
+            std::mem::forget(guard);
+            true
+        }
         Err(e) => {
             tracing::warn!("Não foi possível bloquear buffer de chave na RAM (mlock): {e}");
-            None
+            false
         }
     }
 }
@@ -72,13 +82,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_trancar_e_destrancar_memoria() {
-        let chave = vec![0x42u8; 32];
-        let guard = trancar_memoria(&chave);
-        // Mesmo que o ambiente tenha RLIMIT_MEMLOCK restrito, não deve entrar em pânico.
-        drop(guard);
+    fn test_trancar_memoria_sem_destrancar() {
+        // Dois buffers pequenos costumam dividir a mesma página; travar os dois
+        // (e descartá-los) não pode entrar em pânico, nem com RLIMIT_MEMLOCK restrito.
+        let a = vec![0x42u8; 32];
+        let b = vec![0x24u8; 32];
+        trancar_memoria(&a);
+        trancar_memoria(&b);
+        drop(a);
+        drop(b);
 
-        assert!(trancar_memoria(&[]).is_none());
+        assert!(!trancar_memoria(&[]));
     }
 
     #[test]
