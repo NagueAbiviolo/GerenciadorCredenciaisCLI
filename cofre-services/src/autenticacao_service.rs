@@ -307,14 +307,26 @@ mod tests {
     use super::*;
     use crate::testes::DbTemp;
     use crate::vault_service::{
-        adicionar_credencial, excluir_credencial, tests::cofre_com_servico,
+        adicionar_credencial, excluir_credencial, tests::cofre_com_servico, DadosNovaCredencial,
     };
 
     #[test]
     fn test_metodos_principal_unico() {
         let tmp = DbTemp::new("metodos");
         let (db, vault, u, s) = cofre_com_servico(&tmp);
-        let c = adicionar_credencial(&db, &vault, u, s, "A", "a@x.com", b"s", None).unwrap();
+        let c = adicionar_credencial(
+            &db,
+            &vault,
+            &DadosNovaCredencial {
+                usuario_id: u,
+                servico_id: s,
+                nome_exibicao: "A",
+                identificador: "a@x.com",
+                senha: b"s",
+                observacao: None,
+            },
+        )
+        .unwrap();
 
         let senha = adicionar_metodo(&db, u, c, "SENHA", None, true).unwrap();
         let totp = adicionar_metodo(&db, u, c, "TOTP", Some("Aegis"), true).unwrap();
@@ -353,7 +365,19 @@ mod tests {
     fn test_emails_cifrados_com_aad() {
         let tmp = DbTemp::new("emails");
         let (db, vault, u, s) = cofre_com_servico(&tmp);
-        let c = adicionar_credencial(&db, &vault, u, s, "A", "a@x.com", b"s", None).unwrap();
+        let c = adicionar_credencial(
+            &db,
+            &vault,
+            &DadosNovaCredencial {
+                usuario_id: u,
+                servico_id: s,
+                nome_exibicao: "A",
+                identificador: "a@x.com",
+                senha: b"s",
+                observacao: None,
+            },
+        )
+        .unwrap();
 
         let a = adicionar_email(&db, &vault, u, c, " rec@exemplo.com ", true, true).unwrap();
         let b = adicionar_email(&db, &vault, u, c, "outro@exemplo.com", false, false).unwrap();

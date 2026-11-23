@@ -4,9 +4,11 @@ use cofre_crypto::aead;
 use cofre_crypto::kdf::KdfParams;
 use cofre_crypto::keys::{self, UnlockedVault};
 use cofre_db::connection::DbError;
-use cofre_db::models::{Credencial, NovaCredencial};
+use cofre_db::models::{Credencial, DadosAutenticacao, NovaCredencial, NovoUsuario};
 use cofre_db::Database;
 use thiserror::Error;
+
+use crate::dispositivo_service;
 
 #[derive(Debug, Error)]
 pub enum VaultServiceError {
@@ -33,6 +35,16 @@ impl From<cofre_db::rusqlite::Error> for VaultServiceError {
     fn from(e: cofre_db::rusqlite::Error) -> Self {
         VaultServiceError::Db(DbError::from(e))
     }
+}
+
+/// Dados de entrada para adicionar uma nova credencial ao cofre.
+pub struct DadosNovaCredencial<'a> {
+    pub usuario_id: i64,
+    pub servico_id: i64,
+    pub nome_exibicao: &'a str,
+    pub identificador: &'a str,
+    pub senha: &'a [u8],
+    pub observacao: Option<&'a str>,
 }
 
 /// Alterações possíveis em uma credencial. Campos `None` não são alterados.
@@ -65,15 +77,19 @@ pub fn init_vault_com_params(
 
     let vault_data = keys::init_vault(password, params)?;
 
-    db.criar_usuario(
+    let usuario_id = db.criar_usuario(&NovoUsuario {
         nome,
-        &vault_data.verifier,
-        &vault_data.kek_salt,
-        &vault_data.kdf_params_json,
-        &vault_data.encrypted_dek,
-        &vault_data.dek_nonce,
-        &vault_data.verifier_salt,
-    )?;
+        verificador_mestre: &vault_data.verifier,
+        salt_kdf: &vault_data.kek_salt,
+        parametros_kdf: &vault_data.kdf_params_json,
+        dek_criptografada: &vault_data.encrypted_dek,
+        dek_nonce: &vault_data.dek_nonce,
+        verificador_salt: &vault_data.verifier_salt,
+    })?;
+
+    if let Err(e) = dispositivo_service::registrar_dispositivo_atual(db, usuario_id, true) {
+        tracing::warn!("Não foi possível registrar o dispositivo na inicialização: {e}");
+    }
 
     Ok(())
 }
@@ -101,6 +117,11 @@ pub fn unlock_vault(
     // Atualizar último acesso
     db.atualizar_ultimo_acesso(usuario.id)?;
 
+    // Registrar o dispositivo se for novo (confiavel = false) ou atualizar ultimo_acesso_em
+    if let Err(e) = dispositivo_service::registrar_dispositivo_atual(db, usuario.id, false) {
+        tracing::warn!("Não foi possível registrar/atualizar o dispositivo no desbloqueio: {e}");
+    }
+
     Ok((vault, usuario.id))
 }
 
@@ -124,12 +145,14 @@ pub fn alterar_senha_mestre(
 
     db.atualizar_autenticacao(
         usuario_id,
-        &novos.verifier,
-        &novos.kek_salt,
-        &novos.kdf_params_json,
-        &novos.encrypted_dek,
-        &novos.dek_nonce,
-        &novos.verifier_salt,
+        &DadosAutenticacao {
+            verificador_mestre: &novos.verifier,
+            salt_kdf: &novos.kek_salt,
+            parametros_kdf: &novos.kdf_params_json,
+            dek_criptografada: &novos.encrypted_dek,
+            dek_nonce: &novos.dek_nonce,
+            verificador_salt: &novos.verifier_salt,
+        },
     )?;
 
     Ok(())
@@ -199,16 +222,10 @@ fn gravar_observacao(
 }
 
 /// Adiciona uma nova credencial cifrada ao cofre.
-#[allow(clippy::too_many_arguments)]
 pub fn adicionar_credencial(
     db: &Database,
     vault: &UnlockedVault,
-    usuario_id: i64,
-    servico_id: i64,
-    nome_exibicao: &str,
-    identificador: &str,
-    senha_plaintext: &[u8],
-    observacao: Option<&str>,
+    dados: &DadosNovaCredencial<'_>,
 ) -> Result<i64, VaultServiceError> {
     // A AAD precisa do ID real da linha, que só existe após o INSERT. Por isso a
     // credencial é inserida com campos cifrados vazios e atualizada em seguida,
@@ -216,10 +233,10 @@ pub fn adicionar_credencial(
     let tx = db.conn.unchecked_transaction()?;
 
     let nova = NovaCredencial {
-        usuario_id,
-        servico_id,
-        nome_exibicao: nome_exibicao.to_string(),
-        identificador: identificador.to_string(),
+        usuario_id: dados.usuario_id,
+        servico_id: dados.servico_id,
+        nome_exibicao: dados.nome_exibicao.to_string(),
+        identificador: dados.identificador.to_string(),
         segredo_criptografado: Vec::new(),
         nonce: Vec::new(),
         observacao_criptografada: None,
@@ -228,9 +245,9 @@ pub fn adicionar_credencial(
     };
     let id = db.criar_credencial(&nova)?;
 
-    gravar_senha(db, vault, id, usuario_id, senha_plaintext)?;
-    if observacao.is_some() {
-        gravar_observacao(db, vault, id, usuario_id, observacao)?;
+    gravar_senha(db, vault, id, dados.usuario_id, dados.senha)?;
+    if dados.observacao.is_some() {
+        gravar_observacao(db, vault, id, dados.usuario_id, dados.observacao)?;
     }
 
     tx.commit()?;
@@ -359,16 +376,27 @@ pub(crate) mod tests {
         let a = adicionar_credencial(
             &db,
             &vault,
-            usuario_id,
-            servico_id,
-            "A",
-            "a@x.com",
-            b"senha-a",
-            Some("nota a"),
+            &DadosNovaCredencial {
+                usuario_id,
+                servico_id,
+                nome_exibicao: "A",
+                identificador: "a@x.com",
+                senha: b"senha-a",
+                observacao: Some("nota a"),
+            },
         )
         .unwrap();
         let b = adicionar_credencial(
-            &db, &vault, usuario_id, servico_id, "B", "b@x.com", b"senha-b", None,
+            &db,
+            &vault,
+            &DadosNovaCredencial {
+                usuario_id,
+                servico_id,
+                nome_exibicao: "B",
+                identificador: "b@x.com",
+                senha: b"senha-b",
+                observacao: None,
+            },
         )
         .unwrap();
 
@@ -402,12 +430,14 @@ pub(crate) mod tests {
         let id = adicionar_credencial(
             &db,
             &vault,
-            usuario_id,
-            servico_id,
-            "A",
-            "a@x.com",
-            b"antiga",
-            Some("nota"),
+            &DadosNovaCredencial {
+                usuario_id,
+                servico_id,
+                nome_exibicao: "A",
+                identificador: "a@x.com",
+                senha: b"antiga",
+                observacao: Some("nota"),
+            },
         )
         .unwrap();
 
@@ -458,7 +488,16 @@ pub(crate) mod tests {
         let tmp = DbTemp::new("ciclo");
         let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
         let id = adicionar_credencial(
-            &db, &vault, usuario_id, servico_id, "A", "a@x.com", b"s", None,
+            &db,
+            &vault,
+            &DadosNovaCredencial {
+                usuario_id,
+                servico_id,
+                nome_exibicao: "A",
+                identificador: "a@x.com",
+                senha: b"s",
+                observacao: None,
+            },
         )
         .unwrap();
 
@@ -482,7 +521,16 @@ pub(crate) mod tests {
         let tmp = DbTemp::new("dono");
         let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
         let id = adicionar_credencial(
-            &db, &vault, usuario_id, servico_id, "A", "a@x.com", b"s", None,
+            &db,
+            &vault,
+            &DadosNovaCredencial {
+                usuario_id,
+                servico_id,
+                nome_exibicao: "A",
+                identificador: "a@x.com",
+                senha: b"s",
+                observacao: None,
+            },
         )
         .unwrap();
 
@@ -497,7 +545,16 @@ pub(crate) mod tests {
         let tmp = DbTemp::new("senha-mestre");
         let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
         let id = adicionar_credencial(
-            &db, &vault, usuario_id, servico_id, "A", "a@x.com", b"segredo", None,
+            &db,
+            &vault,
+            &DadosNovaCredencial {
+                usuario_id,
+                servico_id,
+                nome_exibicao: "A",
+                identificador: "a@x.com",
+                senha: b"segredo",
+                observacao: None,
+            },
         )
         .unwrap();
 

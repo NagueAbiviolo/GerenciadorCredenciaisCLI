@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test-lint:
+    name: Build, Test e Clippy (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar toolchain Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache de dependências Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verificar formatação
+        run: cargo fmt --all --check
+
+      - name: Compilar workspace
+        run: cargo build --workspace --locked
+
+      - name: Executar testes
+        run: cargo test --workspace --locked
+
+      - name: Verificar lints com Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test-windows:
+    name: Testes (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar toolchain Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de dependências Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Executar testes
+        run: cargo test --workspace --locked
+
+  supply-chain:
+    name: Auditoria de Supply Chain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Auditoria de vulnerabilidades (cargo-audit)
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verificação de licenças, bans e fontes (cargo-deny)
+        uses: EmbarkStudios/cargo-deny-action@v2

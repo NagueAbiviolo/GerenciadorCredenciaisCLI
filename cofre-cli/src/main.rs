@@ -16,6 +16,9 @@ fn main() {
         )
         .init();
 
+    // Impedir a geração de core/crash dumps com segredos em memória
+    cofre_crypto::protecao::desativar_core_dumps();
+
     let cli = Cli::parse();
 
     if let Err(e) = commands::execute(cli) {

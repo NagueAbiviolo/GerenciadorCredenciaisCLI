@@ -22,6 +22,27 @@ pub struct Usuario {
     pub verificador_salt: Vec<u8>,
 }
 
+/// Dados para criar um novo usuário (cofre).
+pub struct NovoUsuario<'a> {
+    pub nome: &'a str,
+    pub verificador_mestre: &'a [u8],
+    pub salt_kdf: &'a [u8],
+    pub parametros_kdf: &'a str,
+    pub dek_criptografada: &'a [u8],
+    pub dek_nonce: &'a [u8],
+    pub verificador_salt: &'a [u8],
+}
+
+/// Dados criptográficos de autenticação do usuário (atualizados na troca de senha mestre).
+pub struct DadosAutenticacao<'a> {
+    pub verificador_mestre: &'a [u8],
+    pub salt_kdf: &'a [u8],
+    pub parametros_kdf: &'a str,
+    pub dek_criptografada: &'a [u8],
+    pub dek_nonce: &'a [u8],
+    pub verificador_salt: &'a [u8],
+}
+
 /// Modelo da tabela `categoria`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Categoria {
@@ -179,6 +200,15 @@ pub struct Dispositivo {
     pub primeiro_acesso_em: NaiveDateTime,
     pub ultimo_acesso_em: Option<NaiveDateTime>,
     pub ativo: bool,
+}
+
+/// Dados para registrar um novo dispositivo.
+pub struct NovoDispositivo {
+    pub usuario_id: i64,
+    pub nome: String,
+    pub sistema_operacional: Option<String>,
+    pub fingerprint_hash: Option<String>,
+    pub confiavel: bool,
 }
 
 /// Modelo da tabela `preferencia`.

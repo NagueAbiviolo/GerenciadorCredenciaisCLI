@@ -2,6 +2,7 @@
 
 pub mod categoria;
 pub mod credencial;
+pub mod dispositivo;
 pub mod email;
 pub mod init;
 pub mod metodo;
@@ -58,6 +59,16 @@ pub enum Commands {
     /// Gerenciar credenciais.
     #[command(subcommand)]
     Credencial(CredencialCommands),
+
+    /// Gerenciar dispositivos registrados no cofre.
+    #[command(subcommand)]
+    Dispositivo(DispositivoCommands),
+}
+
+#[derive(Subcommand)]
+pub enum DispositivoCommands {
+    /// Listar os dispositivos registrados no cofre.
+    List,
 }
 
 #[derive(Subcommand)]
@@ -500,5 +511,6 @@ pub fn execute(cli: Cli) -> Result<()> {
         Commands::Categoria(cmd) => categoria::execute(&db_path, cmd),
         Commands::Servico(cmd) => servico::execute(&db_path, cmd),
         Commands::Credencial(cmd) => credencial::execute(&db_path, cmd),
+        Commands::Dispositivo(cmd) => dispositivo::execute(&db_path, cmd),
     }
 }

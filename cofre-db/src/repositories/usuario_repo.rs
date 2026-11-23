@@ -3,32 +3,23 @@
 use rusqlite::params;
 
 use crate::connection::{Database, DbError};
-use crate::models::Usuario;
+use crate::models::{DadosAutenticacao, NovoUsuario, Usuario};
 
 impl Database {
     /// Cria um novo usuário (cofre).
-    pub fn criar_usuario(
-        &self,
-        nome: &str,
-        verificador_mestre: &[u8],
-        salt_kdf: &[u8],
-        parametros_kdf: &str,
-        dek_criptografada: &[u8],
-        dek_nonce: &[u8],
-        verificador_salt: &[u8],
-    ) -> Result<i64, DbError> {
+    pub fn criar_usuario(&self, novo: &NovoUsuario) -> Result<i64, DbError> {
         self.conn.execute(
             "INSERT INTO usuario (nome, verificador_mestre, salt_kdf, parametros_kdf,
                                   dek_criptografada, dek_nonce, verificador_salt)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
-                nome,
-                verificador_mestre,
-                salt_kdf,
-                parametros_kdf,
-                dek_criptografada,
-                dek_nonce,
-                verificador_salt,
+                novo.nome,
+                novo.verificador_mestre,
+                novo.salt_kdf,
+                novo.parametros_kdf,
+                novo.dek_criptografada,
+                novo.dek_nonce,
+                novo.verificador_salt,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -83,12 +74,7 @@ impl Database {
     pub fn atualizar_autenticacao(
         &self,
         usuario_id: i64,
-        verificador_mestre: &[u8],
-        salt_kdf: &[u8],
-        parametros_kdf: &str,
-        dek_criptografada: &[u8],
-        dek_nonce: &[u8],
-        verificador_salt: &[u8],
+        dados: &DadosAutenticacao,
     ) -> Result<(), DbError> {
         self.conn.execute(
             "UPDATE usuario
@@ -98,12 +84,12 @@ impl Database {
              WHERE id = ?1",
             params![
                 usuario_id,
-                verificador_mestre,
-                salt_kdf,
-                parametros_kdf,
-                dek_criptografada,
-                dek_nonce,
-                verificador_salt,
+                dados.verificador_mestre,
+                dados.salt_kdf,
+                dados.parametros_kdf,
+                dados.dek_criptografada,
+                dados.dek_nonce,
+                dados.verificador_salt,
             ],
         )?;
         Ok(())

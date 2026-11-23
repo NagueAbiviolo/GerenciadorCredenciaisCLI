@@ -4,6 +4,7 @@
 //! Orquestra operações entre cofre-crypto e cofre-db.
 
 pub mod autenticacao_service;
+pub mod dispositivo_service;
 pub mod servico_service;
 pub mod vault_service;
 

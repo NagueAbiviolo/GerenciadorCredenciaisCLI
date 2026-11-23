@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 
 use cofre_db::models::Credencial;
 use cofre_db::Database;
-use cofre_services::vault_service::{self, EdicaoCredencial};
+use cofre_services::vault_service::{self, DadosNovaCredencial, EdicaoCredencial};
 
 use super::unlock::{self, pedir_senha_nova};
 use super::{confirmar, CredencialCommands};
@@ -145,12 +145,14 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
             let id = vault_service::adicionar_credencial(
                 &db,
                 &vault,
-                usuario_id,
-                servico_id,
-                &nome,
-                &identificador,
-                senha.as_bytes(),
-                obs.as_deref().map(String::as_str),
+                &DadosNovaCredencial {
+                    usuario_id,
+                    servico_id,
+                    nome_exibicao: &nome,
+                    identificador: &identificador,
+                    senha: senha.as_bytes(),
+                    observacao: obs.as_deref().map(String::as_str),
+                },
             )
             .context("Falha ao adicionar credencial")?;
 

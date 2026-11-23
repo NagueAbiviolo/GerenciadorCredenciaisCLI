@@ -12,5 +12,6 @@ pub mod aead;
 pub mod error;
 pub mod kdf;
 pub mod keys;
+pub mod protecao;
 
 pub use error::CryptoError;
