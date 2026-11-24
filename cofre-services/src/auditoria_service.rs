@@ -32,6 +32,7 @@ pub enum TipoEvento {
     Backup,
     Restauracao,
     VerificacaoAlertas,
+    LoginAutomatico,
 }
 
 impl TipoEvento {
@@ -54,6 +55,7 @@ impl TipoEvento {
             TipoEvento::Backup => "BACKUP",
             TipoEvento::Restauracao => "RESTAURACAO",
             TipoEvento::VerificacaoAlertas => "VERIFICACAO_ALERTAS",
+            TipoEvento::LoginAutomatico => "LOGIN_AUTOMATICO",
         }
     }
 }

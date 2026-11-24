@@ -8,6 +8,7 @@ pub mod credencial;
 pub mod dispositivo;
 pub mod email;
 pub mod init;
+pub mod login;
 pub mod metodo;
 pub mod preferencia;
 pub mod senha_mestre;
@@ -19,7 +20,7 @@ pub mod unlock;
 pub mod url;
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use directories::ProjectDirs;
 use inquire::Confirm;
 use std::path::PathBuf;
@@ -89,8 +90,121 @@ pub enum Commands {
     #[command(subcommand)]
     Backup(BackupCommands),
 
+    /// Executar login automático em navegador ou gerenciar configurações de login.
+    Login(LoginArgs),
+
     /// Iniciar modo interativo (shell) com sessão única e bloqueio por inatividade.
     Shell,
+}
+
+/// Argumentos e subcomandos de `cofre login`.
+#[derive(Args)]
+#[command(args_conflicts_with_subcommands = true)]
+pub struct LoginArgs {
+    #[command(subcommand)]
+    pub subcommand: Option<LoginSubcommands>,
+
+    /// ID da credencial para executar o login automático.
+    pub credencial_id: Option<i64>,
+
+    /// ID de uma configuração de login específica da credencial (opcional).
+    #[arg(long)]
+    pub config_id: Option<i64>,
+}
+
+#[derive(Subcommand)]
+pub enum LoginSubcommands {
+    /// Gerenciar configurações de login automático das credenciais.
+    #[command(subcommand)]
+    Config(LoginConfigCommands),
+}
+
+#[derive(Subcommand)]
+pub enum LoginConfigCommands {
+    /// Adicionar uma configuração de login automático a uma credencial.
+    Add {
+        /// ID da credencial.
+        #[arg(long)]
+        credencial_id: i64,
+        /// ID da URL do serviço usada para o login.
+        #[arg(long)]
+        url_id: i64,
+        /// Seletor CSS do campo de usuário/identificador.
+        #[arg(long)]
+        seletor_usuario: Option<String>,
+        /// Seletor CSS do campo de senha (obrigatório).
+        #[arg(long)]
+        seletor_senha: String,
+        /// Seletor CSS do botão de envio/autenticação.
+        #[arg(long)]
+        seletor_botao: Option<String>,
+        /// URL (ou prefixo) esperada após o login bem-sucedido.
+        #[arg(long)]
+        url_sucesso: Option<String>,
+        /// Enviar o formulário automaticamente após preencher os campos (padrão).
+        #[arg(long, conflicts_with = "sem_envio")]
+        envio_automatico: bool,
+        /// Não enviar o formulário automaticamente após preencher os campos.
+        #[arg(long, conflicts_with = "envio_automatico")]
+        sem_envio: bool,
+        /// Timeout máximo em segundos para aguardar elementos e navegação.
+        #[arg(long, default_value_t = 30)]
+        timeout: i64,
+        /// Definir se a configuração já nasce ativa (true) ou inativa (false).
+        #[arg(long, action = clap::ArgAction::Set, default_value_t = true, num_args = 0..=1, default_missing_value = "true")]
+        ativa: bool,
+    },
+    /// Listar as configurações de login de uma credencial.
+    List {
+        /// ID da credencial.
+        #[arg(long)]
+        credencial_id: i64,
+    },
+    /// Exibir detalhes completos de uma configuração de login.
+    Show {
+        /// ID da configuração de login.
+        id: i64,
+    },
+    /// Editar uma configuração de login existente.
+    Edit {
+        /// ID da configuração de login.
+        id: i64,
+        /// Novo ID da URL do serviço.
+        #[arg(long)]
+        url_id: Option<i64>,
+        /// Novo seletor CSS do campo de usuário (vazio remove o seletor).
+        #[arg(long)]
+        seletor_usuario: Option<String>,
+        /// Novo seletor CSS do campo de senha.
+        #[arg(long)]
+        seletor_senha: Option<String>,
+        /// Novo seletor CSS do botão de envio (vazio remove o seletor).
+        #[arg(long)]
+        seletor_botao: Option<String>,
+        /// Nova URL de sucesso (vazia remove a URL).
+        #[arg(long)]
+        url_sucesso: Option<String>,
+        /// Habilitar envio automático do formulário.
+        #[arg(long, conflicts_with = "sem_envio")]
+        envio_automatico: bool,
+        /// Desabilitar envio automático do formulário.
+        #[arg(long, conflicts_with = "envio_automatico")]
+        sem_envio: bool,
+        /// Novo timeout em segundos.
+        #[arg(long)]
+        timeout: Option<i64>,
+        /// Ativar (true) ou desativar (false) a configuração.
+        #[arg(long)]
+        ativa: Option<bool>,
+    },
+    /// Excluir uma configuração de login.
+    Delete {
+        /// ID da configuração de login.
+        id: i64,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -496,6 +610,9 @@ pub enum CredencialCommands {
     /// Gerenciar os e-mails de recuperação da credencial (armazenados cifrados).
     #[command(subcommand)]
     Email(EmailCommands),
+    /// Gerenciar as configurações de login automático da credencial (atalho para `cofre login config`).
+    #[command(subcommand)]
+    LoginConfig(LoginConfigCommands),
 }
 
 /// Tipo de um método de autenticação.
@@ -679,6 +796,7 @@ pub fn executar_comando(ctx: &Contexto, command: Commands) -> Result<()> {
         Commands::Auditoria(cmd) => auditoria::execute(ctx, cmd),
         Commands::Alerta(cmd) => alerta::execute(ctx, cmd),
         Commands::Backup(cmd) => backup::execute(ctx, cmd),
+        Commands::Login(args) => login::execute(ctx, args),
         Commands::Shell => shell::execute(ctx),
     }
 }

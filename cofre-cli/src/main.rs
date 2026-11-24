@@ -12,7 +12,10 @@ fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("cofre=info".parse().unwrap()),
+                .add_directive("cofre=info".parse().unwrap())
+                // O chromiumoxide registra como ERROR o fim normal da conexão
+                // CDP quando o navegador é fechado; não é útil para o usuário.
+                .add_directive("chromiumoxide=off".parse().unwrap()),
         )
         .init();
 

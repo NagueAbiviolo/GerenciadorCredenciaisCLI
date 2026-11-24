@@ -10,7 +10,10 @@ publish = false
 cofre-crypto = { path = "../cofre-crypto" }
 cofre-db = { path = "../cofre-db" }
 thiserror = "2"
-# Automação web será adicionada na Fase 5
-# chromiumoxide = "0.7"
-# url = "2"
-# psl = "2"
+chromiumoxide = { version = "0.9", default-features = false }
+tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
+futures = "0.3"
+url = "2"
+psl = "2"
+zeroize = "1"
+tracing = "0.1"

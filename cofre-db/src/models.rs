@@ -138,6 +138,61 @@ pub struct NovaUrlServico {
     pub padrao: bool,
 }
 
+/// Modelo da tabela `configuracao_login`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfiguracaoLogin {
+    pub id: i64,
+    pub credencial_id: i64,
+    pub url_servico_id: i64,
+    pub seletor_usuario: Option<String>,
+    pub seletor_senha: Option<String>,
+    pub seletor_botao: Option<String>,
+    pub url_sucesso: Option<String>,
+    pub envio_automatico: bool,
+    pub timeout_segundos: i64,
+    pub ultima_validacao_em: Option<NaiveDateTime>,
+    pub criado_em: NaiveDateTime,
+    pub atualizado_em: NaiveDateTime,
+    pub ativa: bool,
+}
+
+/// Dados para criar uma nova configuração de login em `configuracao_login`.
+pub struct NovaConfiguracaoLogin {
+    pub credencial_id: i64,
+    pub url_servico_id: i64,
+    pub seletor_usuario: Option<String>,
+    pub seletor_senha: Option<String>,
+    pub seletor_botao: Option<String>,
+    pub url_sucesso: Option<String>,
+    pub envio_automatico: bool,
+    pub timeout_segundos: i64,
+    pub ativa: bool,
+}
+
+/// Modelo da tabela `sessao_navegador`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessaoNavegador {
+    pub id: i64,
+    pub credencial_id: i64,
+    pub dispositivo_id: Option<i64>,
+    pub navegador: String,
+    pub perfil_nome: Option<String>,
+    pub diretorio_perfil: Option<String>,
+    pub iniciada_em: NaiveDateTime,
+    pub ultimo_uso_em: Option<NaiveDateTime>,
+    pub expira_em: Option<NaiveDateTime>,
+    pub ativa: bool,
+}
+
+/// Dados para registrar uma nova sessão na tabela `sessao_navegador`.
+pub struct NovaSessaoNavegador<'a> {
+    pub credencial_id: i64,
+    pub dispositivo_id: Option<i64>,
+    pub navegador: &'a str,
+    pub perfil_nome: Option<&'a str>,
+    pub diretorio_perfil: Option<&'a str>,
+}
+
 /// Modelo da tabela `metodo_autenticacao`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetodoAutenticacao {

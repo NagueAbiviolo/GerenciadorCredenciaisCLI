@@ -221,6 +221,9 @@ fn imprimir_ajuda() {
         "  alerta <subcomando>       Gerenciar alertas de segurança (scan, list, resolve, delete)"
     );
     println!("  backup <subcomando>       Gerenciar backups cifrados (create, list, verify, restore, delete)");
+    println!(
+        "  login <cred_id>|config    Executar login automático ou gerenciar configurações de login"
+    );
     println!("  senha-mestre              Alterar a senha mestre do cofre");
     println!("  --help ou <cmd> --help    Exibir ajuda detalhada dos subcomandos");
 }

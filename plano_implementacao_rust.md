@@ -18,7 +18,7 @@ Este documento detalha o plano de implementação passo a passo para o gerenciad
 | **AEAD** | `chacha20poly1305` (XChaCha20-Poly1305) | Criptografia autenticada. Nonce de 192 bits elimina risco prático de colisão com nonces aleatórios (RNF04). |
 | **Proteção em memória** | `secrecy` + `zeroize` | `secrecy::Secret<T>` encapsula chaves e senhas impedindo exposição acidental (ex: via `Debug`, `Display`). `zeroize` com `#[derive(Zeroize, ZeroizeOnDrop)]` sobrescreve a memória ao descartar. |
 | **Bloqueio de memória** | `memsec` ou `region` | `mlock` nos buffers de chave para evitar que sejam paginados para swap/disco (RNF07). |
-| **Automação web** | `chromiumoxide` | Controle do Chrome/Chromium via CDP. **Comunicação por pipe** (`--remote-debugging-pipe`), não por porta TCP — qualquer processo local poderia se conectar a uma porta aberta e ler a página com a senha preenchida. Limitação: suporta apenas navegadores Chromium. |
+| **Automação web** | `chromiumoxide = "0.9"` | Controle do Chrome/Chromium/Edge/Brave via CDP sobre WebSocket local em `--remote-debugging-port=0` (porta aleatória em `127.0.0.1`). **Decisão de projeto:** o modo `--remote-debugging-pipe` não é suportado pelo `chromiumoxide` e a prioridade é funcionar no Windows. **Risco aceito:** enquanto o navegador do login estiver aberto, um processo local do mesmo usuário/máquina poderia descobrir e se conectar à porta de depuração. **Mitigações:** usar sempre porta `0` (nunca fixar porta), fechar o navegador e a conexão CDP ao terminar (ou quando o usuário encerrar com Enter/Ctrl+C) e nunca registrar a senha em logs, erros ou `Debug`. |
 | **Automação web (alternativa)** | `thirtyfour` | WebDriver para Firefox via `geckodriver`. API mais verbosa, sem espera automática de elementos. |
 | **Validação de domínio** | `url` + `psl` (Public Suffix List) | Validação por **eTLD+1** (não por prefixo de string). `netflix.com.evil.io` não passa como `netflix.com`. Verificar também a origem de **iframes** (RNF12). |
 | **Clipboard** | `arboard` | Cópia de senhas com limpeza automática por timer. Marcar conteúdo para **não ir ao histórico** e à sincronização em nuvem do Windows. |
@@ -120,19 +120,19 @@ O projeto deve ser construído iterativamente, garantindo que segurança e banco
 ### Fase 5: Automação de Navegador (Login Automático)
 **Objetivo:** Implementar o recurso de login automático (RF06, RF16 e Capítulo 5 dos Requisitos).
 
-1.  Configurar a tabela `configuracao_login` para mapear os seletores CSS.
-2.  Implementar o comando `login <credencial_id>`.
-3.  Integrar `chromiumoxide` para:
-    *   Lançar o navegador via **pipe** (`--remote-debugging-pipe`), **nunca por porta TCP** (`--remote-debugging-port`). Porta TCP permite que qualquer processo local se conecte e leia a página.
-    *   Usar `user_data_dir` para perfil persistente (mapeia para `sessao_navegador.diretorio_perfil`). **Tratar o diretório do perfil como segredo** — guarda cookies de sessão (no Windows, protegidos por DPAPI, mas apenas amarrados ao usuário do SO, não à senha mestre).
+1.  Configurar a tabela `configuracao_login` para mapear os seletores CSS (`cofre login config add|list|show|edit|delete`).
+2.  Implementar o comando `cofre login <credencial_id> [--config-id N]`.
+3.  Integrar `chromiumoxide = "0.9"` (runtime Tokio) para:
+    *   Lançar o navegador visível via WebSocket CDP em `--remote-debugging-port=0` (porta efêmera aleatória em `127.0.0.1`). *Decisão de projeto:* `--remote-debugging-pipe` não é suportado pelo `chromiumoxide` e o suporte a Windows é prioritário. *Risco aceito:* durante a sessão de login aberta, um processo local poderia se conectar à porta de depuração. *Mitigações:* porta `0` (nunca fixar porta), fechar navegador/conexão imediatamente em caso de erro/cancelamento ou quando o usuário encerrar a sessão (Enter/Ctrl+C/fechar janela) e jamais logar a senha.
+    *   Usar `user_data_dir` para perfil persistente por credencial (mapeia para `sessao_navegador.diretorio_perfil`). **Tratar o diretório do perfil como segredo** (criar com permissão `0700` no Unix) — guarda cookies de sessão (no Windows, protegidos por DPAPI, mas apenas amarrados ao usuário do SO, não à senha mestre).
     *   Abrir a URL cadastrada.
-    *   **Validação de domínio por eTLD+1** (`url` + `psl`): antes de preencher qualquer campo, conferir que o domínio carregado (incluindo a **origem de iframes**) corresponde ao `dominio_principal` cadastrado no serviço.
+    *   **Validação de domínio por eTLD+1** (`url` + `psl`): antes de preencher qualquer campo (e revalidando imediatamente antes da senha), conferir que o domínio carregado da página principal e de todos os **frames/iframes** que contenham os campos corresponde ao `dominio_principal` cadastrado no serviço (exigindo `https`, exceto `http` em `localhost`/`127.0.0.1`).
     *   Preencher `seletor_usuario` e `seletor_senha`.
     *   Acionar `seletor_botao` se `envio_automatico` for verdadeiro.
     *   Verificar `url_sucesso` após submissão para confirmar autenticação.
-4.  Detectar **CAPTCHA e MFA**: interromper o fluxo automático e devolver o controle ao usuário.
-5.  Lidar com timeouts (`timeout_segundos`) e interrupções manuais.
-6.  Registrar sessão em `sessao_navegador` e evento em `evento_auditoria`.
+4.  Detectar **CAPTCHA e MFA**: interromper o fluxo automático e devolver o controle ao usuário (`PARCIAL`, RNF13).
+5.  Lidar com timeouts (`timeout_segundos`) e interrupções manuais (Ctrl+C fecha o navegador de forma limpa).
+6.  Registrar sessão em `sessao_navegador` e evento `LOGIN_AUTOMATICO` em `evento_auditoria`.
 
 ### Fase 6: Funcionalidades Avançadas e Auditoria
 **Objetivo:** Implementar módulos auxiliares de segurança, histórico, backup e preferências (RF10–RF15).
@@ -165,9 +165,9 @@ O projeto deve ser construído iterativamente, garantindo que segurança e banco
 *   Sem AAD, um atacante com acesso ao banco pode trocar o `segredo_criptografado` de uma credencial pela de outra — o ataque é silencioso e o sistema não detecta.
 
 ### Navegador e preenchimento automático
-*   Navegador controlado por **pipe**, nunca por porta TCP.
+*   Navegador controlado via CDP WebSocket em `--remote-debugging-port=0` (porta aleatória em `127.0.0.1`, nunca porta fixa), fechando navegador/conexão ao encerrar e nunca expondo a senha em logs.
 *   Validação de domínio por **eTLD+1** (Public Suffix List), incluindo verificação da origem de iframes.
-*   Diretório de perfil persistente tratado como segredo.
+*   Diretório de perfil persistente tratado como segredo (`0700` no Unix).
 *   Interromper fluxo automático em CAPTCHA ou MFA não suportada.
 
 ### Clipboard

@@ -121,6 +121,7 @@ pub fn execute(ctx: &Contexto, cmd: CredencialCommands) -> Result<()> {
     match cmd {
         CredencialCommands::Metodo(cmd) => return super::metodo::execute(ctx, cmd),
         CredencialCommands::Email(cmd) => return super::email::execute(ctx, cmd),
+        CredencialCommands::LoginConfig(cmd) => return super::login::execute_config(ctx, cmd),
 
         CredencialCommands::Add {
             servico_id,
