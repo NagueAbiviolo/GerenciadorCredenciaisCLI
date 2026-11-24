@@ -31,6 +31,7 @@ pub enum TipoEvento {
     RegistroDispositivo,
     Backup,
     Restauracao,
+    VerificacaoAlertas,
 }
 
 impl TipoEvento {
@@ -52,6 +53,7 @@ impl TipoEvento {
             TipoEvento::RegistroDispositivo => "REGISTRO_DISPOSITIVO",
             TipoEvento::Backup => "BACKUP",
             TipoEvento::Restauracao => "RESTAURACAO",
+            TipoEvento::VerificacaoAlertas => "VERIFICACAO_ALERTAS",
         }
     }
 }

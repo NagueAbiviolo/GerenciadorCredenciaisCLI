@@ -219,7 +219,8 @@ pub fn buscar_credencial(
     Ok(cred)
 }
 
-fn aad_segredo(credencial_id: i64, usuario_id: i64) -> String {
+/// AAD do segredo de uma credencial (também usada pela verificação de alertas).
+pub(crate) fn aad_segredo(credencial_id: i64, usuario_id: i64) -> String {
     aead::build_aad(
         "credencial",
         "segredo_criptografado",
@@ -569,8 +570,9 @@ pub fn definir_credencial_ativa(
 
 /// Exclui definitivamente uma credencial do usuário.
 ///
-/// Desvincula os eventos de auditoria existentes (`credencial_id = NULL`) e exclui a
-/// credencial na mesma transação (o histórico é removido via `ON DELETE CASCADE`).
+/// Desvincula os eventos de auditoria existentes (`credencial_id = NULL`), remove os
+/// alertas de segurança da credencial e exclui a credencial na mesma transação
+/// (o histórico, métodos e e-mails são removidos via `ON DELETE CASCADE`).
 /// Em seguida, registra o evento `EXCLUSAO` com `credencial_id = None` e o ID na descrição.
 pub fn excluir_credencial(
     db: &Database,
@@ -581,6 +583,7 @@ pub fn excluir_credencial(
 
     let tx = db.conn.unchecked_transaction()?;
     db.desvincular_credencial_auditoria(credencial_id)?;
+    db.excluir_alertas_credencial(credencial_id)?;
     db.excluir_credencial(credencial_id)?;
     tx.commit()?;
 

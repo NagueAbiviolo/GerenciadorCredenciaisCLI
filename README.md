@@ -41,6 +41,7 @@ cofre credencial metodo add | list | edit | delete      # senha, TOTP, SMS, pass
 cofre credencial email  add | list | edit | delete      # e-mails de recuperação (cifrados)
 cofre preferencia list | get | set | reset              # tempo_clipboard, timeout_inatividade...
 cofre auditoria   list                                  # eventos de auditoria do cofre
+cofre alerta      scan | list | resolve | delete        # alertas de segurança (senha reutilizada, sem 2FA, recuperação)
 cofre backup      create | list | verify | restore | delete
 ```
 

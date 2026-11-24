@@ -15,6 +15,7 @@ use clap::Parser;
 use cofre_crypto::CryptoError;
 use cofre_db::connection::DbError;
 use cofre_db::Database;
+use cofre_services::alerta_service;
 use cofre_services::auditoria_service::{self, ResultadoEvento, TipoEvento};
 use cofre_services::preferencia_service::{self, PADRAO_TIMEOUT_INATIVIDADE};
 use cofre_services::vault_service::{self, VaultServiceError};
@@ -216,6 +217,9 @@ fn imprimir_ajuda() {
     println!("  dispositivo <subcomando>  Gerenciar dispositivos registrados (list)");
     println!("  preferencia <subcomando>  Gerenciar preferências (list, get, set, reset)");
     println!("  auditoria <subcomando>    Consultar eventos de auditoria (list)");
+    println!(
+        "  alerta <subcomando>       Gerenciar alertas de segurança (scan, list, resolve, delete)"
+    );
     println!("  backup <subcomando>       Gerenciar backups cifrados (create, list, verify, restore, delete)");
     println!("  senha-mestre              Alterar a senha mestre do cofre");
     println!("  --help ou <cmd> --help    Exibir ajuda detalhada dos subcomandos");
@@ -236,6 +240,16 @@ pub fn execute(ctx: &Contexto) -> Result<()> {
     println!(
         "🔓 Cofre desbloqueado. Digite 'ajuda' para ver os comandos ou 'sair' para encerrar (bloqueio por inatividade: {minutos_atuais} min)."
     );
+
+    if let Ok(guard) = ctx.sessao_compartilhada().lock() {
+        if let Some(s) = guard.as_ref() {
+            if let Ok(abertos) = alerta_service::contar_abertos(&s.db, s.usuario_id) {
+                if abertos > 0 {
+                    println!("⚠️  {abertos} alerta(s) de segurança aberto(s). Use 'alerta list'.");
+                }
+            }
+        }
+    }
 
     let ultima_atividade = Arc::new(Mutex::new(Instant::now()));
     let executando_comando = Arc::new(AtomicBool::new(false));

@@ -297,3 +297,34 @@ pub struct NovoBackup<'a> {
     pub tamanho_bytes: i64,
     pub versao_formato: &'a str,
 }
+
+/// Modelo da tabela `alerta_seguranca`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertaSeguranca {
+    pub id: i64,
+    pub credencial_id: Option<i64>,
+    pub tipo: String,
+    pub nivel: String,
+    pub titulo: String,
+    pub mensagem: String,
+    pub criado_em: NaiveDateTime,
+    pub resolvido: bool,
+    pub resolvido_em: Option<NaiveDateTime>,
+}
+
+/// Dados para criar um novo alerta na tabela `alerta_seguranca`.
+pub struct NovoAlerta<'a> {
+    pub credencial_id: Option<i64>,
+    pub tipo: &'a str,
+    pub nivel: &'a str,
+    pub titulo: &'a str,
+    pub mensagem: &'a str,
+}
+
+/// Filtros opcionais para listagem de alertas de segurança.
+#[derive(Debug, Clone, Default)]
+pub struct FiltroAlerta<'a> {
+    pub apenas_abertos: bool,
+    pub tipo: Option<&'a str>,
+    pub nivel: Option<&'a str>,
+}

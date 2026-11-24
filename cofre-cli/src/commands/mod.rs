@@ -1,5 +1,6 @@
 //! Definição dos comandos CLI com clap.
 
+pub mod alerta;
 pub mod auditoria;
 pub mod backup;
 pub mod categoria;
@@ -80,6 +81,10 @@ pub enum Commands {
     #[command(subcommand)]
     Auditoria(AuditoriaCommands),
 
+    /// Verificar, listar, resolver e excluir alertas de segurança.
+    #[command(subcommand)]
+    Alerta(AlertaCommands),
+
     /// Gerenciar backups cifrados do cofre.
     #[command(subcommand)]
     Backup(BackupCommands),
@@ -144,6 +149,37 @@ pub enum AuditoriaCommands {
         /// Número máximo de eventos exibidos (1..=1000).
         #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u64).range(1..=1000))]
         limite: u64,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AlertaCommands {
+    /// Analisar as credenciais ativas e reconciliar alertas de segurança.
+    Scan,
+    /// Listar os alertas de segurança do cofre (apenas abertos por padrão).
+    List {
+        /// Exibir todos os alertas (abertos e resolvidos).
+        #[arg(long)]
+        todos: bool,
+        /// Filtrar por tipo de alerta (ex: SENHA_REUTILIZADA, SEM_2FA, RECUPERACAO_DESATUALIZADA).
+        #[arg(long)]
+        tipo: Option<String>,
+        /// Filtrar por nível de severidade (BAIXO, MEDIO, ALTO, CRITICO).
+        #[arg(long)]
+        nivel: Option<String>,
+    },
+    /// Marcar um alerta de segurança como resolvido.
+    Resolve {
+        /// ID do alerta.
+        id: i64,
+    },
+    /// Excluir permanentemente um alerta de segurança.
+    Delete {
+        /// ID do alerta.
+        id: i64,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
     },
 }
 
@@ -641,6 +677,7 @@ pub fn executar_comando(ctx: &Contexto, command: Commands) -> Result<()> {
         Commands::Dispositivo(cmd) => dispositivo::execute(ctx, cmd),
         Commands::Preferencia(cmd) => preferencia::execute(ctx, cmd),
         Commands::Auditoria(cmd) => auditoria::execute(ctx, cmd),
+        Commands::Alerta(cmd) => alerta::execute(ctx, cmd),
         Commands::Backup(cmd) => backup::execute(ctx, cmd),
         Commands::Shell => shell::execute(ctx),
     }

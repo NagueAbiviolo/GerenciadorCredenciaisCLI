@@ -17,6 +17,8 @@ pub const CHAVE_TIMEOUT_INATIVIDADE: &str = "timeout_inatividade";
 pub const CHAVE_NAVEGADOR_PADRAO: &str = "navegador_padrao";
 /// Chave da preferência que controla a retenção de valores anteriores cifrados no histórico.
 pub const CHAVE_HISTORICO_RETER_VALORES: &str = "historico_reter_valores";
+/// Chave da preferência de validade (em dias) da confirmação de e-mails de recuperação.
+pub const CHAVE_RECUPERACAO_VALIDADE_DIAS: &str = "recuperacao_validade_dias";
 
 /// Valor padrão para `tempo_clipboard` (segundos).
 pub const PADRAO_TEMPO_CLIPBOARD: u64 = 20;
@@ -26,6 +28,8 @@ pub const PADRAO_TIMEOUT_INATIVIDADE: u64 = 5;
 pub const PADRAO_NAVEGADOR_PADRAO: &str = "chromium";
 /// Valor padrão para `historico_reter_valores`.
 pub const PADRAO_HISTORICO_RETER_VALORES: bool = false;
+/// Valor padrão para `recuperacao_validade_dias` (dias).
+pub const PADRAO_RECUPERACAO_VALIDADE_DIAS: u64 = 365;
 
 /// Valores permitidos para `navegador_padrao`.
 pub const NAVEGADORES_PERMITIDOS: &[&str] = &["chromium", "chrome", "edge", "brave"];
@@ -90,6 +94,14 @@ pub const CATALOGO_PREFERENCIAS: &[EspecificacaoPreferencia] = &[
         valor_padrao: "false",
         descricao: "Guardar cifrados os valores anteriores no histórico de credenciais",
         regra: RegraPreferencia::Booleano,
+        secreta: false,
+    },
+    EspecificacaoPreferencia {
+        chave: CHAVE_RECUPERACAO_VALIDADE_DIAS,
+        tipo_valor: "INTEGER",
+        valor_padrao: "365",
+        descricao: "Dias até um e-mail de recuperação verificado ser considerado desatualizado",
+        regra: RegraPreferencia::InteiroFaixa { min: 30, max: 3650 },
         secreta: false,
     },
 ];
@@ -344,6 +356,16 @@ pub fn historico_reter_valores(db: &Database, usuario_id: i64) -> Result<bool, V
     Ok(matches!(pref.valor.as_str(), "true" | "sim" | "1"))
 }
 
+/// Retorna a validade em dias de um e-mail de recuperação verificado (`recuperacao_validade_dias`).
+/// Cai no valor padrão (365 dias) se não houver valor salvo ou se o valor for inválido.
+pub fn recuperacao_validade_dias(db: &Database, usuario_id: i64) -> Result<u64, VaultServiceError> {
+    let pref = obter(db, usuario_id, CHAVE_RECUPERACAO_VALIDADE_DIAS)?;
+    Ok(pref
+        .valor
+        .parse::<u64>()
+        .unwrap_or(PADRAO_RECUPERACAO_VALIDADE_DIAS))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,13 +385,14 @@ mod tests {
         let (_tmp, db, u) = db_com_usuario("pref-padroes");
 
         let lista = listar_efetivas(&db, u).unwrap();
-        assert_eq!(lista.len(), 4);
+        assert_eq!(lista.len(), 5);
         assert!(lista.iter().all(|p| p.padrao));
 
         assert_eq!(tempo_clipboard(&db, u).unwrap(), 20);
         assert_eq!(timeout_inatividade(&db, u).unwrap(), 5);
         assert_eq!(navegador_padrao(&db, u).unwrap(), "chromium");
         assert!(!historico_reter_valores(&db, u).unwrap());
+        assert_eq!(recuperacao_validade_dias(&db, u).unwrap(), 365);
 
         let p = obter(&db, u, "tempo_clipboard").unwrap();
         assert_eq!(p.valor, "20");
@@ -403,13 +426,15 @@ mod tests {
         definir(&db, u, "tempo_clipboard", "120").unwrap();
         assert_eq!(tempo_clipboard(&db, u).unwrap(), 120);
 
-        // Define timeout_inatividade, navegador_padrao e historico_reter_valores
+        // Define timeout_inatividade, navegador_padrao, historico_reter_valores e recuperacao_validade_dias
         definir(&db, u, "timeout_inatividade", "15").unwrap();
         definir(&db, u, "navegador_padrao", "  Brave ").unwrap();
         definir(&db, u, "historico_reter_valores", "SIM").unwrap();
+        definir(&db, u, "recuperacao_validade_dias", "180").unwrap();
         assert_eq!(timeout_inatividade(&db, u).unwrap(), 15);
         assert_eq!(navegador_padrao(&db, u).unwrap(), "brave");
         assert!(historico_reter_valores(&db, u).unwrap());
+        assert_eq!(recuperacao_validade_dias(&db, u).unwrap(), 180);
 
         let efetivas = listar_efetivas(&db, u).unwrap();
         assert!(efetivas.iter().all(|p| !p.padrao));
