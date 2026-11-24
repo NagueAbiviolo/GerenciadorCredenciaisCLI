@@ -12,6 +12,7 @@ use zeroize::Zeroizing;
 
 use cofre_db::models::Credencial;
 use cofre_db::Database;
+use cofre_services::auditoria_service::{self, ResultadoEvento, TipoEvento};
 use cofre_services::preferencia_service;
 use cofre_services::vault_service::{self, DadosNovaCredencial, EdicaoCredencial};
 
@@ -260,6 +261,18 @@ pub fn execute(ctx: &Contexto, cmd: CredencialCommands) -> Result<()> {
                         super::email::tabela_emails(&s.vault, s.usuario_id, &emails, revelar)?
                     );
                 }
+
+                if revelar {
+                    let desc = format!("Segredos da credencial {id} revelados");
+                    auditoria_service::registrar(
+                        &s.db,
+                        s.usuario_id,
+                        TipoEvento::RevelacaoSegredo,
+                        ResultadoEvento::Sucesso,
+                        Some(id),
+                        Some(&desc),
+                    );
+                }
                 Ok(())
             })?;
         }
@@ -297,6 +310,16 @@ pub fn execute(ctx: &Contexto, cmd: CredencialCommands) -> Result<()> {
                     anyhow::anyhow!("A senha armazenada não é um texto UTF-8 válido")
                 })?;
 
+                let desc = format!("Senha da credencial {id} copiada para a área de transferência");
+                auditoria_service::registrar(
+                    &s.db,
+                    s.usuario_id,
+                    TipoEvento::CopiaSegredo,
+                    ResultadoEvento::Sucesso,
+                    Some(id),
+                    Some(&desc),
+                );
+
                 copiar_temporariamente(texto, segundos)
             })?;
         }
@@ -309,6 +332,7 @@ pub fn execute(ctx: &Contexto, cmd: CredencialCommands) -> Result<()> {
             senha,
             observacao,
             remover_observacao,
+            motivo,
         } => {
             if nome.is_none()
                 && identificador.is_none()
@@ -346,6 +370,7 @@ pub fn execute(ctx: &Contexto, cmd: CredencialCommands) -> Result<()> {
                     } else {
                         nova_obs.as_ref().map(|o| Some(o.as_str()))
                     },
+                    motivo: motivo.as_deref(),
                 };
 
                 vault_service::editar_credencial(&s.db, &s.vault, s.usuario_id, id, &edicao)
@@ -355,10 +380,16 @@ pub fn execute(ctx: &Contexto, cmd: CredencialCommands) -> Result<()> {
             })?;
         }
 
-        CredencialCommands::Deactivate { id } => {
+        CredencialCommands::Deactivate { id, motivo } => {
             ctx.com_sessao(|s| {
-                vault_service::definir_credencial_ativa(&s.db, s.usuario_id, id, false)
-                    .context("Falha ao desativar credencial")?;
+                vault_service::definir_credencial_ativa(
+                    &s.db,
+                    s.usuario_id,
+                    id,
+                    false,
+                    motivo.as_deref(),
+                )
+                .context("Falha ao desativar credencial")?;
                 println!(
                     "⏸️  Credencial #{id} desativada. Use 'credencial activate {id}' para reativar."
                 );
@@ -366,10 +397,16 @@ pub fn execute(ctx: &Contexto, cmd: CredencialCommands) -> Result<()> {
             })?;
         }
 
-        CredencialCommands::Activate { id } => {
+        CredencialCommands::Activate { id, motivo } => {
             ctx.com_sessao(|s| {
-                vault_service::definir_credencial_ativa(&s.db, s.usuario_id, id, true)
-                    .context("Falha ao reativar credencial")?;
+                vault_service::definir_credencial_ativa(
+                    &s.db,
+                    s.usuario_id,
+                    id,
+                    true,
+                    motivo.as_deref(),
+                )
+                .context("Falha ao reativar credencial")?;
                 println!("▶️  Credencial #{id} reativada.");
                 Ok(())
             })?;
@@ -392,6 +429,100 @@ pub fn execute(ctx: &Contexto, cmd: CredencialCommands) -> Result<()> {
                 vault_service::excluir_credencial(&s.db, s.usuario_id, id)
                     .context("Falha ao excluir credencial")?;
                 println!("🗑️  Credencial '{}' excluída.", cred.nome_exibicao);
+                Ok(())
+            })?;
+        }
+
+        CredencialCommands::Historico { id, revelar } => {
+            ctx.com_sessao(|s| {
+                let itens =
+                    vault_service::listar_historico_credencial(&s.db, s.usuario_id, id)
+                        .context("Falha ao listar o histórico da credencial")?;
+
+                if itens.is_empty() {
+                    println!("Nenhum registro de histórico encontrado para a credencial #{id}.");
+                    return Ok(());
+                }
+
+                let revelar_confirmado = if revelar {
+                    let msg = format!(
+                        "Revelar os valores anteriores da credencial #{id} em texto puro no terminal?"
+                    );
+                    if !confirmar(&msg, false)? {
+                        println!("Operação cancelada.");
+                        return Ok(());
+                    }
+                    true
+                } else {
+                    false
+                };
+
+                let mut table = Table::new();
+                table.set_content_arrangement(ContentArrangement::Dynamic);
+                if revelar_confirmado {
+                    table.set_header(vec![
+                        "Data",
+                        "Tipo",
+                        "Motivo",
+                        "Valor guardado?",
+                        "Valor anterior",
+                    ]);
+                } else {
+                    table.set_header(vec!["Data", "Tipo", "Motivo", "Valor guardado?"]);
+                }
+
+                for item in &itens {
+                    let tem_valor = item.valor_anterior_criptografado.is_some();
+                    let guardado_str = if tem_valor { "Sim" } else { "Não" };
+                    let data_str = item.alterado_em.format("%d/%m/%Y %H:%M:%S").to_string();
+                    let motivo_str = item.motivo.clone().unwrap_or_else(|| "-".into());
+
+                    if revelar_confirmado {
+                        let valor_exibido = match vault_service::revelar_valor_historico(
+                            &s.vault, item,
+                        )
+                        .with_context(|| {
+                            format!("Falha ao descriptografar o item de histórico #{}", item.id)
+                        })? {
+                            Some(bytes) => {
+                                let z = Zeroizing::new(bytes);
+                                String::from_utf8_lossy(&z).to_string()
+                            }
+                            None => "-".into(),
+                        };
+
+                        table.add_row(vec![
+                            data_str,
+                            item.tipo_alteracao.clone(),
+                            motivo_str,
+                            guardado_str.into(),
+                            valor_exibido,
+                        ]);
+                    } else {
+                        table.add_row(vec![
+                            data_str,
+                            item.tipo_alteracao.clone(),
+                            motivo_str,
+                            guardado_str.into(),
+                        ]);
+                    }
+                }
+
+                println!("{table}");
+                println!("\nTotal: {} registro(s) no histórico", itens.len());
+
+                if revelar_confirmado {
+                    let desc = format!("Histórico da credencial {id} revelado");
+                    auditoria_service::registrar(
+                        &s.db,
+                        s.usuario_id,
+                        TipoEvento::RevelacaoSegredo,
+                        ResultadoEvento::Sucesso,
+                        Some(id),
+                        Some(&desc),
+                    );
+                }
+
                 Ok(())
             })?;
         }

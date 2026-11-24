@@ -9,6 +9,7 @@ use cofre_db::connection::DbError;
 use cofre_db::models::{EmailRecuperacao, MetodoAutenticacao, NovoMetodoAutenticacao};
 use cofre_db::Database;
 
+use crate::auditoria_service::{self, ResultadoEvento, TipoEvento};
 use crate::vault_service::{buscar_credencial, VaultServiceError};
 
 /// Tipos aceitos pela coluna `metodo_autenticacao.tipo`.
@@ -117,6 +118,17 @@ pub fn adicionar_metodo(
         db.definir_metodo_principal(credencial_id, id)?;
     }
     tx.commit()?;
+
+    let desc = format!("Método de autenticação {id} ({tipo}) adicionado");
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::Criacao,
+        ResultadoEvento::Sucesso,
+        Some(credencial_id),
+        Some(&desc),
+    );
+
     Ok(id)
 }
 
@@ -157,6 +169,17 @@ pub fn editar_metodo(
         db.definir_metodo_principal(atual.credencial_id, metodo_id)?;
     }
     tx.commit()?;
+
+    let desc = format!("Método de autenticação {metodo_id} editado");
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::Alteracao,
+        ResultadoEvento::Sucesso,
+        Some(atual.credencial_id),
+        Some(&desc),
+    );
+
     Ok(())
 }
 
@@ -168,6 +191,20 @@ pub fn excluir_metodo(
 ) -> Result<MetodoAutenticacao, VaultServiceError> {
     let metodo = buscar_metodo(db, usuario_id, metodo_id)?;
     db.excluir_metodo_autenticacao(metodo_id)?;
+
+    let desc = format!(
+        "Método de autenticação {metodo_id} ({}) excluído",
+        metodo.tipo
+    );
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::Exclusao,
+        ResultadoEvento::Sucesso,
+        Some(metodo.credencial_id),
+        Some(&desc),
+    );
+
     Ok(metodo)
 }
 
@@ -230,6 +267,17 @@ pub fn adicionar_email(
         db.definir_email_recuperacao_principal(credencial_id, id, true)?;
     }
     tx.commit()?;
+
+    let desc = format!("E-mail de recuperação {id} adicionado");
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::Criacao,
+        ResultadoEvento::Sucesso,
+        Some(credencial_id),
+        Some(&desc),
+    );
+
     Ok(id)
 }
 
@@ -288,6 +336,17 @@ pub fn editar_email(
         db.definir_email_recuperacao_ativo(email_id, a)?;
     }
     tx.commit()?;
+
+    let desc = format!("E-mail de recuperação {email_id} editado");
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::Alteracao,
+        ResultadoEvento::Sucesso,
+        Some(atual.credencial_id),
+        Some(&desc),
+    );
+
     Ok(())
 }
 
@@ -299,6 +358,17 @@ pub fn excluir_email(
 ) -> Result<EmailRecuperacao, VaultServiceError> {
     let email = buscar_email(db, usuario_id, email_id)?;
     db.excluir_email_recuperacao(email_id)?;
+
+    let desc = format!("E-mail de recuperação {email_id} excluído");
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::Exclusao,
+        ResultadoEvento::Sucesso,
+        Some(email.credencial_id),
+        Some(&desc),
+    );
+
     Ok(email)
 }
 

@@ -6,6 +6,7 @@
 use cofre_db::models::NovaPreferencia;
 use cofre_db::Database;
 
+use crate::auditoria_service::{self, ResultadoEvento, TipoEvento};
 use crate::vault_service::VaultServiceError;
 
 /// Chave da preferência de tempo de limpeza da área de transferência (segundos).
@@ -14,6 +15,8 @@ pub const CHAVE_TEMPO_CLIPBOARD: &str = "tempo_clipboard";
 pub const CHAVE_TIMEOUT_INATIVIDADE: &str = "timeout_inatividade";
 /// Chave da preferência de navegador padrão para sessões/automação.
 pub const CHAVE_NAVEGADOR_PADRAO: &str = "navegador_padrao";
+/// Chave da preferência que controla a retenção de valores anteriores cifrados no histórico.
+pub const CHAVE_HISTORICO_RETER_VALORES: &str = "historico_reter_valores";
 
 /// Valor padrão para `tempo_clipboard` (segundos).
 pub const PADRAO_TEMPO_CLIPBOARD: u64 = 20;
@@ -21,6 +24,8 @@ pub const PADRAO_TEMPO_CLIPBOARD: u64 = 20;
 pub const PADRAO_TIMEOUT_INATIVIDADE: u64 = 5;
 /// Valor padrão para `navegador_padrao`.
 pub const PADRAO_NAVEGADOR_PADRAO: &str = "chromium";
+/// Valor padrão para `historico_reter_valores`.
+pub const PADRAO_HISTORICO_RETER_VALORES: bool = false;
 
 /// Valores permitidos para `navegador_padrao`.
 pub const NAVEGADORES_PERMITIDOS: &[&str] = &["chromium", "chrome", "edge", "brave"];
@@ -32,6 +37,8 @@ pub enum RegraPreferencia {
     InteiroFaixa { min: u64, max: u64 },
     /// Texto pertencente a um conjunto fixo de opções.
     TextoOpcoes(&'static [&'static str]),
+    /// Valor booleano (aceita `true`/`false`, `sim`/`nao`/`não`, `1`/`0`, normalizando para `"true"`/`"false"`).
+    Booleano,
 }
 
 /// Especificação de uma preferência conhecida no catálogo.
@@ -75,6 +82,14 @@ pub const CATALOGO_PREFERENCIAS: &[EspecificacaoPreferencia] = &[
         valor_padrao: PADRAO_NAVEGADOR_PADRAO,
         descricao: "Navegador padrão para abertura e automação de sessões",
         regra: RegraPreferencia::TextoOpcoes(NAVEGADORES_PERMITIDOS),
+        secreta: false,
+    },
+    EspecificacaoPreferencia {
+        chave: CHAVE_HISTORICO_RETER_VALORES,
+        tipo_valor: "BOOLEAN",
+        valor_padrao: "false",
+        descricao: "Guardar cifrados os valores anteriores no histórico de credenciais",
+        regra: RegraPreferencia::Booleano,
         secreta: false,
     },
 ];
@@ -145,6 +160,17 @@ fn validar_valor(
                     espec.chave,
                     opcoes.join(", ")
                 )))
+            }
+        }
+        RegraPreferencia::Booleano => {
+            let minusculo = limpo.to_lowercase();
+            match minusculo.as_str() {
+                "true" | "sim" | "1" => Ok("true".to_string()),
+                "false" | "nao" | "não" | "0" => Ok("false".to_string()),
+                _ => Err(VaultServiceError::Invalido(format!(
+                    "valor '{limpo}' inválido para '{}': esperado booleano (true/false, sim/nao, 1/0)",
+                    espec.chave
+                ))),
             }
         }
     }
@@ -234,6 +260,19 @@ pub fn definir(
         descricao: Some(espec.descricao),
     })?;
 
+    let desc = format!(
+        "Preferência '{}' definida como '{}'",
+        espec.chave, valor_validado
+    );
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::AlteracaoPreferencia,
+        ResultadoEvento::Sucesso,
+        None,
+        Some(&desc),
+    );
+
     Ok(PreferenciaEfetiva {
         chave: espec.chave.to_string(),
         valor: valor_validado,
@@ -251,6 +290,19 @@ pub fn redefinir(
 ) -> Result<PreferenciaEfetiva, VaultServiceError> {
     let espec = buscar_especificacao(chave)?;
     db.remover_preferencia(usuario_id, espec.chave)?;
+
+    let desc = format!(
+        "Preferência '{}' redefinida para o padrão ('{}')",
+        espec.chave, espec.valor_padrao
+    );
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::AlteracaoPreferencia,
+        ResultadoEvento::Sucesso,
+        None,
+        Some(&desc),
+    );
 
     Ok(PreferenciaEfetiva {
         chave: espec.chave.to_string(),
@@ -285,6 +337,13 @@ pub fn navegador_padrao(db: &Database, usuario_id: i64) -> Result<String, VaultS
     Ok(pref.valor)
 }
 
+/// Retorna se os valores anteriores das credenciais devem ser retidos cifrados no histórico (`historico_reter_valores`).
+/// Cai no valor padrão (`false`) se não houver valor salvo.
+pub fn historico_reter_valores(db: &Database, usuario_id: i64) -> Result<bool, VaultServiceError> {
+    let pref = obter(db, usuario_id, CHAVE_HISTORICO_RETER_VALORES)?;
+    Ok(matches!(pref.valor.as_str(), "true" | "sim" | "1"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,12 +363,13 @@ mod tests {
         let (_tmp, db, u) = db_com_usuario("pref-padroes");
 
         let lista = listar_efetivas(&db, u).unwrap();
-        assert_eq!(lista.len(), 3);
+        assert_eq!(lista.len(), 4);
         assert!(lista.iter().all(|p| p.padrao));
 
         assert_eq!(tempo_clipboard(&db, u).unwrap(), 20);
         assert_eq!(timeout_inatividade(&db, u).unwrap(), 5);
         assert_eq!(navegador_padrao(&db, u).unwrap(), "chromium");
+        assert!(!historico_reter_valores(&db, u).unwrap());
 
         let p = obter(&db, u, "tempo_clipboard").unwrap();
         assert_eq!(p.valor, "20");
@@ -343,11 +403,13 @@ mod tests {
         definir(&db, u, "tempo_clipboard", "120").unwrap();
         assert_eq!(tempo_clipboard(&db, u).unwrap(), 120);
 
-        // Define timeout_inatividade e navegador_padrao (normalizando maiúsculas)
+        // Define timeout_inatividade, navegador_padrao e historico_reter_valores
         definir(&db, u, "timeout_inatividade", "15").unwrap();
         definir(&db, u, "navegador_padrao", "  Brave ").unwrap();
+        definir(&db, u, "historico_reter_valores", "SIM").unwrap();
         assert_eq!(timeout_inatividade(&db, u).unwrap(), 15);
         assert_eq!(navegador_padrao(&db, u).unwrap(), "brave");
+        assert!(historico_reter_valores(&db, u).unwrap());
 
         let efetivas = listar_efetivas(&db, u).unwrap();
         assert!(efetivas.iter().all(|p| !p.padrao));
@@ -394,5 +456,19 @@ mod tests {
         for nav in ["chromium", "chrome", "edge", "brave"] {
             assert!(definir(&db, u, "navegador_padrao", nav).is_ok());
         }
+
+        // historico_reter_valores: booleano
+        for verdadeiro in ["true", "TRUE", "sim", "SIM", "1"] {
+            let p = definir(&db, u, "historico_reter_valores", verdadeiro).unwrap();
+            assert_eq!(p.valor, "true");
+            assert!(historico_reter_valores(&db, u).unwrap());
+        }
+        for falso in ["false", "FALSE", "nao", "não", "NÃO", "0"] {
+            let p = definir(&db, u, "historico_reter_valores", falso).unwrap();
+            assert_eq!(p.valor, "false");
+            assert!(!historico_reter_valores(&db, u).unwrap());
+        }
+        assert!(definir(&db, u, "historico_reter_valores", "talvez").is_err());
+        assert!(definir(&db, u, "historico_reter_valores", "2").is_err());
     }
 }

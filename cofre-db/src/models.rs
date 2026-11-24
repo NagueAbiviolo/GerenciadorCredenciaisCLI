@@ -175,6 +175,28 @@ pub struct EmailRecuperacao {
     pub ativo: bool,
 }
 
+/// Modelo da tabela `historico_credencial`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoricoCredencial {
+    pub id: i64,
+    pub credencial_id: i64,
+    pub tipo_alteracao: String,
+    pub valor_anterior_criptografado: Option<Vec<u8>>,
+    pub nonce: Option<Vec<u8>>,
+    pub motivo: Option<String>,
+    pub alterado_em: NaiveDateTime,
+}
+
+/// Dados para criar um novo registro em `historico_credencial`.
+pub struct NovoHistoricoCredencial<'a> {
+    pub credencial_id: i64,
+    /// Um de: SENHA, IDENTIFICADOR, OBSERVACAO, ATIVACAO.
+    pub tipo_alteracao: &'a str,
+    pub valor_anterior_criptografado: Option<&'a [u8]>,
+    pub nonce: Option<&'a [u8]>,
+    pub motivo: Option<&'a str>,
+}
+
 /// Modelo da tabela `evento_auditoria`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventoAuditoria {
@@ -186,6 +208,25 @@ pub struct EventoAuditoria {
     pub resultado: String,
     pub descricao: Option<String>,
     pub ocorrido_em: NaiveDateTime,
+}
+
+/// Dados para registrar um novo evento na tabela `evento_auditoria`.
+pub struct NovoEventoAuditoria<'a> {
+    pub usuario_id: i64,
+    pub credencial_id: Option<i64>,
+    pub dispositivo_id: Option<i64>,
+    pub tipo_evento: &'a str,
+    pub resultado: &'a str,
+    pub descricao: Option<&'a str>,
+}
+
+/// Filtros opcionais para listagem de eventos de auditoria.
+#[derive(Debug, Clone, Default)]
+pub struct FiltroAuditoria<'a> {
+    pub tipo_evento: Option<&'a str>,
+    pub credencial_id: Option<i64>,
+    pub desde: Option<chrono::NaiveDate>,
+    pub limite: Option<usize>,
 }
 
 /// Modelo da tabela `dispositivo`.

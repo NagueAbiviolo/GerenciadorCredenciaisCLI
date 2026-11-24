@@ -4,11 +4,17 @@ use cofre_crypto::aead;
 use cofre_crypto::kdf::KdfParams;
 use cofre_crypto::keys::{self, UnlockedVault};
 use cofre_db::connection::DbError;
-use cofre_db::models::{Credencial, DadosAutenticacao, NovaCredencial, NovoUsuario};
+use cofre_db::models::{
+    Credencial, DadosAutenticacao, HistoricoCredencial, NovaCredencial, NovoHistoricoCredencial,
+    NovoUsuario,
+};
 use cofre_db::Database;
 use thiserror::Error;
+use zeroize::Zeroizing;
 
+use crate::auditoria_service::{self, ResultadoEvento, TipoEvento};
 use crate::dispositivo_service;
+use crate::preferencia_service;
 
 #[derive(Debug, Error)]
 pub enum VaultServiceError {
@@ -56,6 +62,8 @@ pub struct EdicaoCredencial<'a> {
     pub senha: Option<&'a [u8]>,
     /// `Some(None)` remove a observação; `Some(Some(texto))` a substitui.
     pub observacao: Option<Option<&'a str>>,
+    /// Motivo opcional da alteração, gravado no histórico da credencial.
+    pub motivo: Option<&'a str>,
 }
 
 /// Inicializa um novo cofre com os parâmetros de KDF padrão.
@@ -91,6 +99,15 @@ pub fn init_vault_com_params(
         tracing::warn!("Não foi possível registrar o dispositivo na inicialização: {e}");
     }
 
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::Inicializacao,
+        ResultadoEvento::Sucesso,
+        None,
+        Some("Cofre inicializado"),
+    );
+
     Ok(())
 }
 
@@ -104,7 +121,7 @@ pub fn unlock_vault(
         other => VaultServiceError::Db(other),
     })?;
 
-    let vault = keys::unlock_vault(
+    let vault = match keys::unlock_vault(
         password,
         &usuario.salt_kdf,
         &usuario.verificador_salt,
@@ -112,7 +129,20 @@ pub fn unlock_vault(
         &usuario.dek_criptografada,
         &usuario.dek_nonce,
         &usuario.parametros_kdf,
-    )?;
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            auditoria_service::registrar(
+                db,
+                usuario.id,
+                TipoEvento::Desbloqueio,
+                ResultadoEvento::Falha,
+                None,
+                Some("Falha ao desbloquear o cofre: senha mestre inválida"),
+            );
+            return Err(VaultServiceError::Crypto(e));
+        }
+    };
 
     // Atualizar último acesso
     db.atualizar_ultimo_acesso(usuario.id)?;
@@ -121,6 +151,15 @@ pub fn unlock_vault(
     if let Err(e) = dispositivo_service::registrar_dispositivo_atual(db, usuario.id, false) {
         tracing::warn!("Não foi possível registrar/atualizar o dispositivo no desbloqueio: {e}");
     }
+
+    auditoria_service::registrar(
+        db,
+        usuario.id,
+        TipoEvento::Desbloqueio,
+        ResultadoEvento::Sucesso,
+        None,
+        Some("Cofre desbloqueado"),
+    );
 
     Ok((vault, usuario.id))
 }
@@ -155,6 +194,15 @@ pub fn alterar_senha_mestre(
         },
     )?;
 
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::AlteracaoSenhaMestre,
+        ResultadoEvento::Sucesso,
+        None,
+        Some("Senha mestre alterada"),
+    );
+
     Ok(())
 }
 
@@ -187,6 +235,43 @@ fn aad_observacao(credencial_id: i64, usuario_id: i64) -> String {
         credencial_id,
         usuario_id,
     )
+}
+
+fn aad_historico(historico_id: i64, credencial_id: i64) -> String {
+    aead::build_aad(
+        "historico_credencial",
+        "valor_anterior_criptografado",
+        historico_id,
+        credencial_id,
+    )
+}
+
+fn gravar_item_historico(
+    db: &Database,
+    vault: &UnlockedVault,
+    credencial_id: i64,
+    tipo_alteracao: &str,
+    valor_anterior: Option<&[u8]>,
+    reter_valores: bool,
+    motivo: Option<&str>,
+) -> Result<i64, VaultServiceError> {
+    let historico_id = db.inserir_historico_credencial(&NovoHistoricoCredencial {
+        credencial_id,
+        tipo_alteracao,
+        valor_anterior_criptografado: None,
+        nonce: None,
+        motivo,
+    })?;
+
+    if reter_valores {
+        if let Some(bytes) = valor_anterior {
+            let (nonce, cifrado) =
+                vault.encrypt(bytes, &aad_historico(historico_id, credencial_id))?;
+            db.atualizar_valor_historico_credencial(historico_id, &cifrado, &nonce)?;
+        }
+    }
+
+    Ok(historico_id)
 }
 
 /// Cifra e grava a senha de uma credencial existente.
@@ -251,10 +336,22 @@ pub fn adicionar_credencial(
     }
 
     tx.commit()?;
+
+    let desc = format!("Credencial {id} criada");
+    auditoria_service::registrar(
+        db,
+        dados.usuario_id,
+        TipoEvento::Criacao,
+        ResultadoEvento::Sucesso,
+        Some(id),
+        Some(&desc),
+    );
+
     Ok(id)
 }
 
-/// Aplica as alterações informadas a uma credencial, em uma única transação.
+/// Aplica as alterações informadas a uma credencial, em uma única transação,
+/// registrando o histórico de alterações relevantes (RF10) e o evento de auditoria (RF11).
 pub fn editar_credencial(
     db: &Database,
     vault: &UnlockedVault,
@@ -263,6 +360,64 @@ pub fn editar_credencial(
     edicao: &EdicaoCredencial<'_>,
 ) -> Result<(), VaultServiceError> {
     let atual = buscar_credencial(db, credencial_id, usuario_id)?;
+    let reter_valores = preferencia_service::historico_reter_valores(db, usuario_id)?;
+
+    let mut campos_alterados: Vec<&'static str> = Vec::new();
+
+    let nome_mudou = edicao
+        .nome_exibicao
+        .is_some_and(|novo| novo != atual.nome_exibicao);
+    if nome_mudou {
+        campos_alterados.push("nome_exibicao");
+    }
+
+    let id_mudou = edicao
+        .identificador
+        .is_some_and(|novo| novo != atual.identificador);
+    if id_mudou {
+        campos_alterados.push("identificador");
+    }
+
+    let fav_mudou = edicao.favorita.is_some_and(|novo| novo != atual.favorita);
+    if fav_mudou {
+        campos_alterados.push("favorita");
+    }
+
+    let senha_anterior = if let Some(nova_senha) = edicao.senha {
+        let atual_plain = Zeroizing::new(vault.decrypt(
+            &atual.nonce,
+            &atual.segredo_criptografado,
+            &aad_segredo(atual.id, usuario_id),
+        )?);
+        if atual_plain.as_slice() != nova_senha {
+            campos_alterados.push("senha");
+            Some(atual_plain)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let obs_mudou_e_anterior: Option<Option<Zeroizing<Vec<u8>>>> = if let Some(nova_obs) =
+        edicao.observacao
+    {
+        let obs_atual_plain = revelar_observacao(vault, &atual)?.map(Zeroizing::new);
+        let mudou = match (&obs_atual_plain, nova_obs) {
+            (Some(atual_bytes), Some(novo_str)) => atual_bytes.as_slice() != novo_str.as_bytes(),
+            (None, None) => false,
+            _ => true,
+        };
+        if mudou {
+            campos_alterados.push("observacao");
+            Some(obs_atual_plain)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let tx = db.conn.unchecked_transaction()?;
 
     if edicao.nome_exibicao.is_some() || edicao.identificador.is_some() || edicao.favorita.is_some()
@@ -274,14 +429,66 @@ pub fn editar_credencial(
             edicao.favorita.unwrap_or(atual.favorita),
         )?;
     }
-    if let Some(senha) = edicao.senha {
-        gravar_senha(db, vault, credencial_id, usuario_id, senha)?;
+
+    if id_mudou {
+        gravar_item_historico(
+            db,
+            vault,
+            credencial_id,
+            "IDENTIFICADOR",
+            Some(atual.identificador.as_bytes()),
+            reter_valores,
+            edicao.motivo,
+        )?;
     }
-    if let Some(observacao) = edicao.observacao {
-        gravar_observacao(db, vault, credencial_id, usuario_id, observacao)?;
+
+    if let Some(nova_senha) = edicao.senha {
+        gravar_senha(db, vault, credencial_id, usuario_id, nova_senha)?;
+        if let Some(antiga) = &senha_anterior {
+            gravar_item_historico(
+                db,
+                vault,
+                credencial_id,
+                "SENHA",
+                Some(antiga.as_slice()),
+                reter_valores,
+                edicao.motivo,
+            )?;
+        }
+    }
+
+    if let Some(nova_obs) = edicao.observacao {
+        gravar_observacao(db, vault, credencial_id, usuario_id, nova_obs)?;
+        if let Some(antiga_opt) = &obs_mudou_e_anterior {
+            gravar_item_historico(
+                db,
+                vault,
+                credencial_id,
+                "OBSERVACAO",
+                antiga_opt.as_ref().map(|z| z.as_slice()),
+                reter_valores,
+                edicao.motivo,
+            )?;
+        }
     }
 
     tx.commit()?;
+
+    if !campos_alterados.is_empty() {
+        let desc = format!(
+            "Credencial {credencial_id} editada: {}",
+            campos_alterados.join(", ")
+        );
+        auditoria_service::registrar(
+            db,
+            usuario_id,
+            TipoEvento::Alteracao,
+            ResultadoEvento::Sucesso,
+            Some(credencial_id),
+            Some(&desc),
+        );
+    }
+
     Ok(())
 }
 
@@ -320,27 +527,99 @@ pub fn revelar_observacao(
     }
 }
 
-/// Ativa ou desativa uma credencial do usuário.
+/// Ativa ou desativa uma credencial do usuário, registrando no histórico e na auditoria.
 pub fn definir_credencial_ativa(
     db: &Database,
     usuario_id: i64,
     credencial_id: i64,
     ativa: bool,
+    motivo: Option<&str>,
 ) -> Result<(), VaultServiceError> {
     buscar_credencial(db, credencial_id, usuario_id)?;
+    let motivo_efetivo = motivo.unwrap_or(if ativa { "Ativada" } else { "Desativada" });
+
+    let tx = db.conn.unchecked_transaction()?;
     db.definir_credencial_ativa(credencial_id, ativa)?;
+    db.inserir_historico_credencial(&NovoHistoricoCredencial {
+        credencial_id,
+        tipo_alteracao: "ATIVACAO",
+        valor_anterior_criptografado: None,
+        nonce: None,
+        motivo: Some(motivo_efetivo),
+    })?;
+    tx.commit()?;
+
+    let (tipo, acao) = if ativa {
+        (TipoEvento::Ativacao, "ativada")
+    } else {
+        (TipoEvento::Desativacao, "desativada")
+    };
+    let desc = format!("Credencial {credencial_id} {acao}");
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        tipo,
+        ResultadoEvento::Sucesso,
+        Some(credencial_id),
+        Some(&desc),
+    );
+
     Ok(())
 }
 
 /// Exclui definitivamente uma credencial do usuário.
+///
+/// Desvincula os eventos de auditoria existentes (`credencial_id = NULL`) e exclui a
+/// credencial na mesma transação (o histórico é removido via `ON DELETE CASCADE`).
+/// Em seguida, registra o evento `EXCLUSAO` com `credencial_id = None` e o ID na descrição.
 pub fn excluir_credencial(
     db: &Database,
     usuario_id: i64,
     credencial_id: i64,
 ) -> Result<(), VaultServiceError> {
     buscar_credencial(db, credencial_id, usuario_id)?;
+
+    let tx = db.conn.unchecked_transaction()?;
+    db.desvincular_credencial_auditoria(credencial_id)?;
     db.excluir_credencial(credencial_id)?;
+    tx.commit()?;
+
+    let desc = format!("Credencial {credencial_id} excluída");
+    auditoria_service::registrar(
+        db,
+        usuario_id,
+        TipoEvento::Exclusao,
+        ResultadoEvento::Sucesso,
+        None,
+        Some(&desc),
+    );
+
     Ok(())
+}
+
+/// Lista o histórico de alterações de uma credencial do usuário.
+pub fn listar_historico_credencial(
+    db: &Database,
+    usuario_id: i64,
+    credencial_id: i64,
+) -> Result<Vec<HistoricoCredencial>, VaultServiceError> {
+    buscar_credencial(db, credencial_id, usuario_id)?;
+    Ok(db.listar_historico_credencial(credencial_id)?)
+}
+
+/// Descriptografa o valor anterior armazenado em um item do histórico, se houver.
+pub fn revelar_valor_historico(
+    vault: &UnlockedVault,
+    item: &HistoricoCredencial,
+) -> Result<Option<Vec<u8>>, VaultServiceError> {
+    match (&item.valor_anterior_criptografado, &item.nonce) {
+        (Some(cifrado), Some(nonce)) => Ok(Some(vault.decrypt(
+            nonce,
+            cifrado,
+            &aad_historico(item.id, item.credencial_id),
+        )?)),
+        _ => Ok(None),
+    }
 }
 
 #[cfg(test)]
@@ -501,11 +780,11 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        definir_credencial_ativa(&db, usuario_id, id, false).unwrap();
+        definir_credencial_ativa(&db, usuario_id, id, false, None).unwrap();
         assert!(db.listar_credenciais(usuario_id, true).unwrap().is_empty());
         assert_eq!(db.listar_credenciais(usuario_id, false).unwrap().len(), 1);
 
-        definir_credencial_ativa(&db, usuario_id, id, true).unwrap();
+        definir_credencial_ativa(&db, usuario_id, id, true, Some("Voltou a usar")).unwrap();
         assert_eq!(db.listar_credenciais(usuario_id, true).unwrap().len(), 1);
 
         // Com credencial vinculada, o serviço não pode ser excluído.
@@ -566,5 +845,236 @@ pub(crate) mod tests {
             revelar_senha(&db, &novo_vault, id, usuario_id).unwrap(),
             b"segredo"
         );
+    }
+
+    #[test]
+    fn test_historico_edicao_retencao_aad_e_ativacao() {
+        let tmp = DbTemp::new("historico-credencial");
+        let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
+
+        let id = adicionar_credencial(
+            &db,
+            &vault,
+            &DadosNovaCredencial {
+                usuario_id,
+                servico_id,
+                nome_exibicao: "Conta",
+                identificador: "user1@x.com",
+                senha: b"senha1",
+                observacao: Some("obs1"),
+            },
+        )
+        .unwrap();
+
+        // 1. Sem mudança real (mesmos valores + apenas nome/favorita mudam): não gera histórico.
+        editar_credencial(
+            &db,
+            &vault,
+            usuario_id,
+            id,
+            &EdicaoCredencial {
+                nome_exibicao: Some("Conta Renomeada"),
+                identificador: Some("user1@x.com"),
+                favorita: Some(true),
+                senha: Some(b"senha1"),
+                observacao: Some(Some("obs1")),
+                motivo: Some("Não deve gerar histórico"),
+            },
+        )
+        .unwrap();
+        assert!(listar_historico_credencial(&db, usuario_id, id)
+            .unwrap()
+            .is_empty());
+
+        // 2. Com historico_reter_valores = false (padrão): gera linhas sem valores cifrados.
+        editar_credencial(
+            &db,
+            &vault,
+            usuario_id,
+            id,
+            &EdicaoCredencial {
+                identificador: Some("user2@x.com"),
+                senha: Some(b"senha2"),
+                observacao: Some(Some("obs2")),
+                motivo: Some("Rotação sem retenção"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let hist_sem_ret = listar_historico_credencial(&db, usuario_id, id).unwrap();
+        assert_eq!(hist_sem_ret.len(), 3);
+        for item in &hist_sem_ret {
+            assert!(item.valor_anterior_criptografado.is_none());
+            assert!(item.nonce.is_none());
+            assert_eq!(item.motivo.as_deref(), Some("Rotação sem retenção"));
+            assert!(revelar_valor_historico(&vault, item).unwrap().is_none());
+        }
+
+        // 3. Ativando historico_reter_valores = true: cifra valores anteriores com AAD.
+        preferencia_service::definir(&db, usuario_id, "historico_reter_valores", "true").unwrap();
+
+        editar_credencial(
+            &db,
+            &vault,
+            usuario_id,
+            id,
+            &EdicaoCredencial {
+                identificador: Some("user3@x.com"),
+                senha: Some(b"senha3"),
+                observacao: Some(None),
+                motivo: Some("Rotação com retenção"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let hist_com_ret = listar_historico_credencial(&db, usuario_id, id).unwrap();
+        assert_eq!(hist_com_ret.len(), 6);
+        let recentes = &hist_com_ret[..3];
+
+        let item_obs = recentes
+            .iter()
+            .find(|h| h.tipo_alteracao == "OBSERVACAO")
+            .unwrap();
+        let item_senha = recentes
+            .iter()
+            .find(|h| h.tipo_alteracao == "SENHA")
+            .unwrap();
+        let item_id = recentes
+            .iter()
+            .find(|h| h.tipo_alteracao == "IDENTIFICADOR")
+            .unwrap();
+
+        assert_eq!(
+            revelar_valor_historico(&vault, item_obs).unwrap().unwrap(),
+            b"obs2"
+        );
+        assert_eq!(
+            revelar_valor_historico(&vault, item_senha)
+                .unwrap()
+                .unwrap(),
+            b"senha2"
+        );
+        assert_eq!(
+            revelar_valor_historico(&vault, item_id).unwrap().unwrap(),
+            b"user2@x.com"
+        );
+
+        // Trocar o ciphertext entre duas linhas do histórico deve falhar na verificação da AAD.
+        db.atualizar_valor_historico_credencial(
+            item_senha.id,
+            item_id.valor_anterior_criptografado.as_ref().unwrap(),
+            item_id.nonce.as_ref().unwrap(),
+        )
+        .unwrap();
+        let hist_adulterado = listar_historico_credencial(&db, usuario_id, id).unwrap();
+        let senha_adulterada = hist_adulterado
+            .iter()
+            .find(|h| h.id == item_senha.id)
+            .unwrap();
+        assert!(revelar_valor_historico(&vault, senha_adulterada).is_err());
+
+        // 4. Desativar e reativar gera registros ATIVACAO com motivo padrão ou informado.
+        definir_credencial_ativa(&db, usuario_id, id, false, None).unwrap();
+        definir_credencial_ativa(&db, usuario_id, id, true, Some("Reativação solicitada")).unwrap();
+
+        let hist_final = listar_historico_credencial(&db, usuario_id, id).unwrap();
+        assert_eq!(hist_final.len(), 8);
+        assert_eq!(hist_final[0].tipo_alteracao, "ATIVACAO");
+        assert_eq!(
+            hist_final[0].motivo.as_deref(),
+            Some("Reativação solicitada")
+        );
+        assert!(hist_final[0].valor_anterior_criptografado.is_none());
+        assert_eq!(hist_final[1].tipo_alteracao, "ATIVACAO");
+        assert_eq!(hist_final[1].motivo.as_deref(), Some("Desativada"));
+    }
+
+    #[test]
+    fn test_excluir_credencial_com_eventos_e_historico() {
+        use cofre_db::models::FiltroAuditoria;
+
+        let tmp = DbTemp::new("excluir-com-auditoria");
+        let (db, vault, usuario_id, servico_id) = cofre_com_servico(&tmp);
+
+        preferencia_service::definir(&db, usuario_id, "historico_reter_valores", "true").unwrap();
+
+        let id = adicionar_credencial(
+            &db,
+            &vault,
+            &DadosNovaCredencial {
+                usuario_id,
+                servico_id,
+                nome_exibicao: "Temporária",
+                identificador: "temp@x.com",
+                senha: b"s1",
+                observacao: None,
+            },
+        )
+        .unwrap();
+
+        editar_credencial(
+            &db,
+            &vault,
+            usuario_id,
+            id,
+            &EdicaoCredencial {
+                senha: Some(b"s2"),
+                motivo: Some("Troca"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        definir_credencial_ativa(&db, usuario_id, id, false, None).unwrap();
+
+        // Verifica que existem eventos vinculados à credencial e registros de histórico.
+        let eventos_antes = auditoria_service::listar(
+            &db,
+            usuario_id,
+            &FiltroAuditoria {
+                credencial_id: Some(id),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(eventos_antes.len(), 3); // CRIACAO, ALTERACAO, DESATIVACAO
+        assert_eq!(db.listar_historico_credencial(id).unwrap().len(), 2);
+
+        // Excluir a credencial deve desvincular os eventos anteriores, apagar o histórico em cascata
+        // e registrar o evento EXCLUSAO sem credencial_id, com o ID na descrição.
+        excluir_credencial(&db, usuario_id, id).unwrap();
+
+        assert!(matches!(db.buscar_credencial(id), Err(DbError::NotFound)));
+        assert!(db.listar_historico_credencial(id).unwrap().is_empty());
+
+        let vinculados_apos = auditoria_service::listar(
+            &db,
+            usuario_id,
+            &FiltroAuditoria {
+                credencial_id: Some(id),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(vinculados_apos.is_empty());
+
+        let exclusoes = auditoria_service::listar(
+            &db,
+            usuario_id,
+            &FiltroAuditoria {
+                tipo_evento: Some("EXCLUSAO"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(exclusoes.len(), 1);
+        assert!(exclusoes[0].credencial_id.is_none());
+        assert!(exclusoes[0]
+            .descricao
+            .as_deref()
+            .unwrap()
+            .contains(&id.to_string()));
     }
 }

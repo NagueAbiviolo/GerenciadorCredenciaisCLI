@@ -3,6 +3,7 @@
 //! Regras de negócio do Gerenciador de Credenciais.
 //! Orquestra operações entre cofre-crypto e cofre-db.
 
+pub mod auditoria_service;
 pub mod autenticacao_service;
 pub mod dispositivo_service;
 pub mod preferencia_service;

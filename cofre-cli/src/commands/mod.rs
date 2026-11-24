@@ -1,5 +1,6 @@
 //! Definição dos comandos CLI com clap.
 
+pub mod auditoria;
 pub mod categoria;
 pub mod credencial;
 pub mod dispositivo;
@@ -74,8 +75,31 @@ pub enum Commands {
     #[command(subcommand)]
     Preferencia(PreferenciaCommands),
 
+    /// Consultar eventos de auditoria do cofre.
+    #[command(subcommand)]
+    Auditoria(AuditoriaCommands),
+
     /// Iniciar modo interativo (shell) com sessão única e bloqueio por inatividade.
     Shell,
+}
+
+#[derive(Subcommand)]
+pub enum AuditoriaCommands {
+    /// Listar eventos de auditoria registrados no cofre.
+    List {
+        /// Filtrar por tipo de evento (ex: DESBLOQUEIO, COPIA_SEGREDO, ALTERACAO).
+        #[arg(long)]
+        tipo: Option<String>,
+        /// Filtrar por ID da credencial.
+        #[arg(long)]
+        credencial: Option<i64>,
+        /// Filtrar eventos a partir desta data (formato AAAA-MM-DD).
+        #[arg(long)]
+        desde: Option<String>,
+        /// Número máximo de eventos exibidos (1..=1000).
+        #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u64).range(1..=1000))]
+        limite: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -349,16 +373,25 @@ pub enum CredencialCommands {
         /// Remover a observação.
         #[arg(long)]
         remover_observacao: bool,
+        /// Motivo opcional da alteração (registrado no histórico da credencial).
+        #[arg(short, long)]
+        motivo: Option<String>,
     },
     /// Desativar uma credencial (fica oculta, mas não é apagada).
     Deactivate {
         /// ID da credencial.
         id: i64,
+        /// Motivo opcional da desativação (registrado no histórico da credencial).
+        #[arg(short, long)]
+        motivo: Option<String>,
     },
     /// Reativar uma credencial desativada.
     Activate {
         /// ID da credencial.
         id: i64,
+        /// Motivo opcional da reativação (registrado no histórico da credencial).
+        #[arg(short, long)]
+        motivo: Option<String>,
     },
     /// Excluir definitivamente uma credencial.
     Delete {
@@ -367,6 +400,14 @@ pub enum CredencialCommands {
         /// Não pedir confirmação.
         #[arg(short = 'y', long)]
         sim: bool,
+    },
+    /// Exibir o histórico de alterações de uma credencial.
+    Historico {
+        /// ID da credencial.
+        id: i64,
+        /// Revelar valores anteriores guardados no histórico (pede confirmação).
+        #[arg(short, long)]
+        revelar: bool,
     },
     /// Gerenciar os métodos de autenticação da credencial (senha, TOTP, SMS...).
     #[command(subcommand)]
@@ -554,6 +595,7 @@ pub fn executar_comando(ctx: &Contexto, command: Commands) -> Result<()> {
         Commands::Credencial(cmd) => credencial::execute(ctx, cmd),
         Commands::Dispositivo(cmd) => dispositivo::execute(ctx, cmd),
         Commands::Preferencia(cmd) => preferencia::execute(ctx, cmd),
+        Commands::Auditoria(cmd) => auditoria::execute(ctx, cmd),
         Commands::Shell => shell::execute(ctx),
     }
 }

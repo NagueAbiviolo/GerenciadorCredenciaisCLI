@@ -4,11 +4,31 @@
 //! (hostname, SO, arquitetura, usuário do SO e `/etc/machine-id` no Linux)
 //! sem armazenar identificadores brutos de hardware no banco.
 
+use std::sync::OnceLock;
+
 use sha2::{Digest, Sha256};
 
 use cofre_db::connection::DbError;
 use cofre_db::models::NovoDispositivo;
 use cofre_db::Database;
+
+static FINGERPRINT_ATUAL: OnceLock<String> = OnceLock::new();
+
+/// Retorna o fingerprint SHA-256 do dispositivo atual (calculado uma única vez por processo).
+pub fn fingerprint_dispositivo_atual() -> &'static str {
+    FINGERPRINT_ATUAL.get_or_init(|| {
+        let nome = obter_hostname();
+        let usuario_so = obter_usuario_so();
+        let machine_id = obter_machine_id();
+        calcular_fingerprint_componentes(
+            &nome,
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            &usuario_so,
+            machine_id.as_deref(),
+        )
+    })
+}
 
 /// Obtém o hostname da máquina atual.
 pub fn obter_hostname() -> String {
@@ -122,15 +142,7 @@ pub fn calcular_fingerprint_componentes(
 pub fn coletar_dados_dispositivo(usuario_id: i64, confiavel: bool) -> NovoDispositivo {
     let nome = obter_hostname();
     let sistema_operacional = Some(obter_sistema_operacional());
-    let usuario_so = obter_usuario_so();
-    let machine_id = obter_machine_id();
-    let fingerprint = calcular_fingerprint_componentes(
-        &nome,
-        std::env::consts::OS,
-        std::env::consts::ARCH,
-        &usuario_so,
-        machine_id.as_deref(),
-    );
+    let fingerprint = fingerprint_dispositivo_atual().to_string();
 
     NovoDispositivo {
         usuario_id,

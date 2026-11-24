@@ -15,6 +15,7 @@ use clap::Parser;
 use cofre_crypto::CryptoError;
 use cofre_db::connection::DbError;
 use cofre_db::Database;
+use cofre_services::auditoria_service::{self, ResultadoEvento, TipoEvento};
 use cofre_services::preferencia_service::{self, PADRAO_TIMEOUT_INATIVIDADE};
 use cofre_services::vault_service::{self, VaultServiceError};
 
@@ -129,7 +130,16 @@ pub fn tentar_bloquear_por_inatividade(
         .lock()
         .expect("Mutex de última atividade corrompido");
     if expirou(ultima, agora, timeout) {
-        drop(guard.take());
+        if let Some(s) = guard.take() {
+            auditoria_service::registrar(
+                &s.db,
+                s.usuario_id,
+                TipoEvento::Bloqueio,
+                ResultadoEvento::Sucesso,
+                None,
+                Some("Cofre bloqueado por inatividade no shell"),
+            );
+        }
         true
     } else {
         false
@@ -202,9 +212,10 @@ fn imprimir_ajuda() {
     println!("Os demais comandos são os subcomandos normais sem o prefixo 'cofre':");
     println!("  categoria <subcomando>    Gerenciar categorias (add, list, edit, delete)");
     println!("  servico <subcomando>      Gerenciar serviços e URLs (add, list, search, edit, delete, url)");
-    println!("  credencial <subcomando>   Gerenciar credenciais, métodos e e-mails");
+    println!("  credencial <subcomando>   Gerenciar credenciais, histórico, métodos e e-mails");
     println!("  dispositivo <subcomando>  Gerenciar dispositivos registrados (list)");
     println!("  preferencia <subcomando>  Gerenciar preferências (list, get, set, reset)");
+    println!("  auditoria <subcomando>    Consultar eventos de auditoria (list)");
     println!("  senha-mestre              Alterar a senha mestre do cofre");
     println!("  --help ou <cmd> --help    Exibir ajuda detalhada dos subcomandos");
 }
@@ -305,7 +316,7 @@ pub fn execute(ctx: &Contexto) -> Result<()> {
             }
             ComandoShell::Interno(ComandoInterno::Sair) => true,
             ComandoShell::Interno(ComandoInterno::Bloquear) => {
-                if ctx.bloquear() {
+                if ctx.bloquear(Some("Cofre bloqueado manualmente no shell")) {
                     println!("🔒 Cofre bloqueado. O próximo comando que exigir autenticação pedirá a senha mestre.");
                 } else {
                     println!("🔒 O cofre já está bloqueado.");
@@ -374,7 +385,7 @@ pub fn execute(ctx: &Contexto) -> Result<()> {
     vigia.thread().unpark();
     let _ = vigia.join();
 
-    ctx.bloquear();
+    ctx.bloquear(Some("Cofre bloqueado ao sair do shell"));
     println!("🔒 Cofre bloqueado.");
 
     Ok(())

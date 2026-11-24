@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use cofre_crypto::keys::UnlockedVault;
 use cofre_db::Database;
+use cofre_services::auditoria_service::{self, ResultadoEvento, TipoEvento};
 
 use super::unlock;
 
@@ -60,10 +61,25 @@ impl Contexto {
     }
 
     /// Descarta imediatamente a sessão ativa, se houver, zerando a DEK em memória.
+    /// Registra um evento `BLOQUEIO` na auditoria caso `descricao` seja informada.
     /// Retorna `true` se havia uma sessão ativa que foi descartada.
-    pub fn bloquear(&self) -> bool {
+    pub fn bloquear(&self, descricao: Option<&str>) -> bool {
         let mut guard = self.sessao.lock().expect("Mutex da sessão corrompido");
-        guard.take().is_some()
+        if let Some(sessao) = guard.take() {
+            if let Some(desc) = descricao {
+                auditoria_service::registrar(
+                    &sessao.db,
+                    sessao.usuario_id,
+                    TipoEvento::Bloqueio,
+                    ResultadoEvento::Sucesso,
+                    None,
+                    Some(desc),
+                );
+            }
+            true
+        } else {
+            false
+        }
     }
 
     /// Executa `f` com referência à sessão desbloqueada, sem clonar segredos.

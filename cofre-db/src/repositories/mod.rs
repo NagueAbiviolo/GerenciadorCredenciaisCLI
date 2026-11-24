@@ -2,10 +2,12 @@
 //!
 //! Cada repositório encapsula as queries SQL de uma tabela.
 
+pub mod auditoria_repo;
 pub mod categoria_repo;
 pub mod credencial_repo;
 pub mod dispositivo_repo;
 pub mod email_recuperacao_repo;
+pub mod historico_repo;
 pub mod metodo_autenticacao_repo;
 pub mod preferencia_repo;
 pub mod servico_repo;

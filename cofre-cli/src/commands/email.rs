@@ -10,6 +10,7 @@ use zeroize::Zeroizing;
 
 use cofre_crypto::keys::UnlockedVault;
 use cofre_db::models::EmailRecuperacao;
+use cofre_services::auditoria_service::{self, ResultadoEvento, TipoEvento};
 use cofre_services::autenticacao_service::{self, EdicaoEmail};
 
 use super::sessao::Contexto;
@@ -135,6 +136,18 @@ pub fn execute(ctx: &Contexto, cmd: EmailCommands) -> Result<()> {
                     tabela_emails(&s.vault, s.usuario_id, &emails, revelar)?
                 );
                 println!("\nTotal: {} e-mail(s)", emails.len());
+                if revelar {
+                    let desc =
+                        format!("E-mails de recuperação da credencial {credencial_id} revelados");
+                    auditoria_service::registrar(
+                        &s.db,
+                        s.usuario_id,
+                        TipoEvento::RevelacaoSegredo,
+                        ResultadoEvento::Sucesso,
+                        Some(credencial_id),
+                        Some(&desc),
+                    );
+                }
             }
 
             EmailCommands::Edit {
