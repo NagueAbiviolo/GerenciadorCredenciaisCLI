@@ -1,14 +1,15 @@
 //! Comando `cofre init` — Inicializa um novo cofre.
 
 use anyhow::{Context, Result};
-use std::path::Path;
 
 use cofre_db::Database;
 use cofre_services::vault_service;
 
+use super::sessao::Contexto;
 use super::unlock::pedir_senha_mestre_nova;
 
-pub fn execute(db_path: &Path, nome: &str) -> Result<()> {
+pub fn execute(ctx: &Contexto, nome: &str) -> Result<()> {
+    let db_path = ctx.db_path();
     println!("🔐 Inicializando cofre para: {nome}");
     println!("   Banco: {}", db_path.display());
 

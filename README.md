@@ -31,13 +31,15 @@ Workspace Cargo dividido por responsabilidade:
 cargo build --release
 
 cofre init --nome "Seu Nome"
+cofre shell                                             # modo interativo com bloqueio por inatividade
 cofre senha-mestre
-cofre categoria  add | list | edit | delete
-cofre servico    add | list | search | edit | delete
+cofre categoria   add | list | edit | delete
+cofre servico     add | list | search | edit | delete
 cofre servico url add | list | edit | delete            # URLs de login, recuperação, cadastro...
-cofre credencial add | list | show | search | copy | edit | deactivate | activate | delete
+cofre credencial  add | list | show | search | copy | edit | deactivate | activate | delete
 cofre credencial metodo add | list | edit | delete      # senha, TOTP, SMS, passkey...
 cofre credencial email  add | list | edit | delete      # e-mails de recuperação (cifrados)
+cofre preferencia list | get | set | reset              # tempo_clipboard, timeout_inatividade...
 ```
 
 Os e-mails de recuperação são cifrados com a DEK e pedidos em prompt (não vão para o histórico do shell). Na listagem aparecem mascarados, e `--revelar` mostra o endereço completo.

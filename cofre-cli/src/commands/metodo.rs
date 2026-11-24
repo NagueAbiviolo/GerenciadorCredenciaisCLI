@@ -1,14 +1,12 @@
 //! Comandos dos métodos de autenticação (`cofre credencial metodo ...`).
 
-use std::path::Path;
-
 use anyhow::{Context, Result};
 use comfy_table::{ContentArrangement, Table};
 
 use cofre_db::models::MetodoAutenticacao;
 use cofre_services::autenticacao_service::{self, EdicaoMetodo};
 
-use super::unlock;
+use super::sessao::Contexto;
 use super::{confirmar, vazio_para_none, MetodoCommands};
 
 /// Tabela de métodos, também usada em `credencial show`.
@@ -38,7 +36,7 @@ pub fn tabela_metodos(metodos: &[MetodoAutenticacao]) -> Table {
     table
 }
 
-pub fn execute(db_path: &Path, cmd: MetodoCommands) -> Result<()> {
+pub fn execute(ctx: &Contexto, cmd: MetodoCommands) -> Result<()> {
     // Sem argumentos de edição, falha antes de pedir a senha mestre.
     if let MetodoCommands::Edit {
         tipo: None,
@@ -51,77 +49,78 @@ pub fn execute(db_path: &Path, cmd: MetodoCommands) -> Result<()> {
         anyhow::bail!("Nada para alterar. Use --help para ver os campos editáveis.");
     }
 
-    let (db, _vault, usuario_id) = unlock::unlock(db_path)?;
-
-    match cmd {
-        MetodoCommands::Add {
-            credencial_id,
-            tipo,
-            descricao,
-            principal,
-        } => {
-            let id = autenticacao_service::adicionar_metodo(
-                &db,
-                usuario_id,
+    ctx.com_sessao(|s| {
+        match cmd {
+            MetodoCommands::Add {
                 credencial_id,
-                tipo.como_db(),
-                descricao.as_deref(),
+                tipo,
+                descricao,
                 principal,
-            )
-            .context("Falha ao adicionar método de autenticação")?;
-            println!(
-                "✅ Método {} adicionado à credencial #{credencial_id} com ID {id}.",
-                tipo.como_db()
-            );
-        }
-
-        MetodoCommands::List { credencial_id } => {
-            let metodos = autenticacao_service::listar_metodos(&db, usuario_id, credencial_id)
-                .context("Falha ao listar métodos de autenticação")?;
-            if metodos.is_empty() {
+            } => {
+                let id = autenticacao_service::adicionar_metodo(
+                    &s.db,
+                    s.usuario_id,
+                    credencial_id,
+                    tipo.como_db(),
+                    descricao.as_deref(),
+                    principal,
+                )
+                .context("Falha ao adicionar método de autenticação")?;
                 println!(
-                    "Nenhum método de autenticação cadastrado para a credencial #{credencial_id}."
+                    "✅ Método {} adicionado à credencial #{credencial_id} com ID {id}.",
+                    tipo.como_db()
                 );
-                return Ok(());
             }
-            println!("{}", tabela_metodos(&metodos));
-            println!("\nTotal: {} método(s)", metodos.len());
-        }
 
-        MetodoCommands::Edit {
-            id,
-            tipo,
-            descricao,
-            principal,
-            habilitado,
-        } => {
-            let descricao = descricao.map(vazio_para_none);
-            let edicao = EdicaoMetodo {
-                tipo: tipo.map(|t| t.como_db()),
-                descricao: descricao.as_ref().map(|d| d.as_deref()),
+            MetodoCommands::List { credencial_id } => {
+                let metodos =
+                    autenticacao_service::listar_metodos(&s.db, s.usuario_id, credencial_id)
+                        .context("Falha ao listar métodos de autenticação")?;
+                if metodos.is_empty() {
+                    println!(
+                        "Nenhum método de autenticação cadastrado para a credencial #{credencial_id}."
+                    );
+                    return Ok(());
+                }
+                println!("{}", tabela_metodos(&metodos));
+                println!("\nTotal: {} método(s)", metodos.len());
+            }
+
+            MetodoCommands::Edit {
+                id,
+                tipo,
+                descricao,
                 principal,
                 habilitado,
-            };
-            autenticacao_service::editar_metodo(&db, usuario_id, id, &edicao)
-                .context("Falha ao editar método de autenticação")?;
-            println!("✅ Método #{id} atualizado.");
-        }
-
-        MetodoCommands::Delete { id, sim } => {
-            let metodo = autenticacao_service::buscar_metodo(&db, usuario_id, id)
-                .context("Método de autenticação não encontrado")?;
-            let mensagem = format!(
-                "Excluir o método {} da credencial #{}?",
-                metodo.tipo, metodo.credencial_id
-            );
-            if !confirmar(&mensagem, sim)? {
-                println!("Operação cancelada.");
-                return Ok(());
+            } => {
+                let descricao = descricao.map(vazio_para_none);
+                let edicao = EdicaoMetodo {
+                    tipo: tipo.map(|t| t.como_db()),
+                    descricao: descricao.as_ref().map(|d| d.as_deref()),
+                    principal,
+                    habilitado,
+                };
+                autenticacao_service::editar_metodo(&s.db, s.usuario_id, id, &edicao)
+                    .context("Falha ao editar método de autenticação")?;
+                println!("✅ Método #{id} atualizado.");
             }
-            autenticacao_service::excluir_metodo(&db, usuario_id, id)
-                .context("Falha ao excluir método de autenticação")?;
-            println!("🗑️  Método #{id} excluído.");
+
+            MetodoCommands::Delete { id, sim } => {
+                let metodo = autenticacao_service::buscar_metodo(&s.db, s.usuario_id, id)
+                    .context("Método de autenticação não encontrado")?;
+                let mensagem = format!(
+                    "Excluir o método {} da credencial #{}?",
+                    metodo.tipo, metodo.credencial_id
+                );
+                if !confirmar(&mensagem, sim)? {
+                    println!("Operação cancelada.");
+                    return Ok(());
+                }
+                autenticacao_service::excluir_metodo(&s.db, s.usuario_id, id)
+                    .context("Falha ao excluir método de autenticação")?;
+                println!("🗑️  Método #{id} excluído.");
+            }
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }

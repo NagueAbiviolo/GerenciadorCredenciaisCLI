@@ -375,6 +375,7 @@ dependencies = [
  "ctrlc",
  "directories",
  "inquire",
+ "shlex",
  "tracing",
  "tracing-subscriber",
  "zeroize",

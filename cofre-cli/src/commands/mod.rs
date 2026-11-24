@@ -9,6 +9,9 @@ pub mod metodo;
 pub mod preferencia;
 pub mod senha_mestre;
 pub mod servico;
+pub mod sessao;
+pub mod shell;
+pub mod sinal;
 pub mod unlock;
 pub mod url;
 
@@ -17,6 +20,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use directories::ProjectDirs;
 use inquire::Confirm;
 use std::path::PathBuf;
+
+use self::sessao::Contexto;
 
 /// Gerenciador Pessoal de Credenciais — CLI
 #[derive(Parser)]
@@ -68,6 +73,9 @@ pub enum Commands {
     /// Gerenciar preferências do usuário.
     #[command(subcommand)]
     Preferencia(PreferenciaCommands),
+
+    /// Iniciar modo interativo (shell) com sessão única e bloqueio por inatividade.
+    Shell,
 }
 
 #[derive(Subcommand)]
@@ -532,14 +540,20 @@ pub fn vazio_para_none(valor: String) -> Option<String> {
 /// Executa o comando selecionado.
 pub fn execute(cli: Cli) -> Result<()> {
     let db_path = resolve_db_path(&cli.db_path)?;
+    let ctx = Contexto::novo(db_path);
+    executar_comando(&ctx, cli.command)
+}
 
-    match cli.command {
-        Commands::Init { nome } => init::execute(&db_path, &nome),
-        Commands::SenhaMestre => senha_mestre::execute(&db_path),
-        Commands::Categoria(cmd) => categoria::execute(&db_path, cmd),
-        Commands::Servico(cmd) => servico::execute(&db_path, cmd),
-        Commands::Credencial(cmd) => credencial::execute(&db_path, cmd),
-        Commands::Dispositivo(cmd) => dispositivo::execute(&db_path, cmd),
-        Commands::Preferencia(cmd) => preferencia::execute(&db_path, cmd),
+/// Despacha um subcomando utilizando o contexto compartilhado.
+pub fn executar_comando(ctx: &Contexto, command: Commands) -> Result<()> {
+    match command {
+        Commands::Init { nome } => init::execute(ctx, &nome),
+        Commands::SenhaMestre => senha_mestre::execute(ctx),
+        Commands::Categoria(cmd) => categoria::execute(ctx, cmd),
+        Commands::Servico(cmd) => servico::execute(ctx, cmd),
+        Commands::Credencial(cmd) => credencial::execute(ctx, cmd),
+        Commands::Dispositivo(cmd) => dispositivo::execute(ctx, cmd),
+        Commands::Preferencia(cmd) => preferencia::execute(ctx, cmd),
+        Commands::Shell => shell::execute(ctx),
     }
 }
