@@ -6,6 +6,7 @@ pub mod dispositivo;
 pub mod email;
 pub mod init;
 pub mod metodo;
+pub mod preferencia;
 pub mod senha_mestre;
 pub mod servico;
 pub mod unlock;
@@ -63,6 +64,33 @@ pub enum Commands {
     /// Gerenciar dispositivos registrados no cofre.
     #[command(subcommand)]
     Dispositivo(DispositivoCommands),
+
+    /// Gerenciar preferências do usuário.
+    #[command(subcommand)]
+    Preferencia(PreferenciaCommands),
+}
+
+#[derive(Subcommand)]
+pub enum PreferenciaCommands {
+    /// Listar todas as preferências e seus valores efetivos.
+    List,
+    /// Obter o valor atual de uma preferência.
+    Get {
+        /// Chave da preferência (ex: tempo_clipboard, timeout_inatividade, navegador_padrao).
+        chave: String,
+    },
+    /// Definir o valor de uma preferência.
+    Set {
+        /// Chave da preferência.
+        chave: String,
+        /// Novo valor da preferência.
+        valor: String,
+    },
+    /// Redefinir uma preferência para o valor padrão.
+    Reset {
+        /// Chave da preferência.
+        chave: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -287,9 +315,9 @@ pub enum CredencialCommands {
     Copy {
         /// ID da credencial.
         id: i64,
-        /// Segundos até limpar a área de transferência.
-        #[arg(short, long, default_value_t = 20, value_parser = clap::value_parser!(u64).range(1..=600))]
-        segundos: u64,
+        /// Segundos até limpar a área de transferência (usa a preferência tempo_clipboard se omitido).
+        #[arg(short, long, value_parser = clap::value_parser!(u64).range(1..=600))]
+        segundos: Option<u64>,
     },
     /// Editar uma credencial.
     Edit {
@@ -512,5 +540,6 @@ pub fn execute(cli: Cli) -> Result<()> {
         Commands::Servico(cmd) => servico::execute(&db_path, cmd),
         Commands::Credencial(cmd) => credencial::execute(&db_path, cmd),
         Commands::Dispositivo(cmd) => dispositivo::execute(&db_path, cmd),
+        Commands::Preferencia(cmd) => preferencia::execute(&db_path, cmd),
     }
 }

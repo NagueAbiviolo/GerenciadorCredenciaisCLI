@@ -222,3 +222,12 @@ pub struct Preferencia {
     pub descricao: Option<String>,
     pub atualizado_em: NaiveDateTime,
 }
+
+/// Dados para inserir ou atualizar uma preferência do usuário.
+pub struct NovaPreferencia<'a> {
+    pub usuario_id: i64,
+    pub chave: &'a str,
+    pub valor: &'a str,
+    pub tipo_valor: &'a str,
+    pub descricao: Option<&'a str>,
+}

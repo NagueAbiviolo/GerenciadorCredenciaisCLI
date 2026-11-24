@@ -14,6 +14,7 @@ use zeroize::Zeroizing;
 
 use cofre_db::models::Credencial;
 use cofre_db::Database;
+use cofre_services::preferencia_service;
 use cofre_services::vault_service::{self, DadosNovaCredencial, EdicaoCredencial};
 
 use super::unlock::{self, pedir_senha_nova};
@@ -281,6 +282,12 @@ pub fn execute(db_path: &Path, cmd: CredencialCommands) -> Result<()> {
 
         CredencialCommands::Copy { id, segundos } => {
             let (db, vault, usuario_id) = unlock::unlock(db_path)?;
+
+            let segundos = match segundos {
+                Some(s) => s,
+                None => preferencia_service::tempo_clipboard(&db, usuario_id)
+                    .context("Falha ao obter a preferência tempo_clipboard")?,
+            };
 
             let senha = Zeroizing::new(
                 vault_service::revelar_senha(&db, &vault, id, usuario_id)
