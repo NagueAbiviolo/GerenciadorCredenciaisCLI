@@ -216,6 +216,7 @@ fn imprimir_ajuda() {
     println!("  dispositivo <subcomando>  Gerenciar dispositivos registrados (list)");
     println!("  preferencia <subcomando>  Gerenciar preferências (list, get, set, reset)");
     println!("  auditoria <subcomando>    Consultar eventos de auditoria (list)");
+    println!("  backup <subcomando>       Gerenciar backups cifrados (create, list, verify, restore, delete)");
     println!("  senha-mestre              Alterar a senha mestre do cofre");
     println!("  --help ou <cmd> --help    Exibir ajuda detalhada dos subcomandos");
 }

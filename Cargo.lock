@@ -355,7 +355,10 @@ dependencies = [
  "chrono",
  "cofre-crypto",
  "cofre-db",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
+ "zeroize",
 ]
 
 [[package]]
@@ -417,8 +420,10 @@ name = "cofre-services"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "cofre-backup",
  "cofre-crypto",
  "cofre-db",
+ "rand",
  "serde_json",
  "sha2",
  "thiserror 2.0.21",

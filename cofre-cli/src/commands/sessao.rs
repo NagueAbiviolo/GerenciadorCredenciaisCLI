@@ -82,6 +82,36 @@ impl Contexto {
         }
     }
 
+    /// Encerra a sessão ativa antes de uma restauração de backup, fechando a conexão
+    /// SQLite com o banco atual (necessário antes do `rename`) e retornando o
+    /// `UnlockedVault` que estava em memória caso possa ser usado na decifragem.
+    pub fn encerrar_sessao_para_restauracao(
+        &self,
+        descricao: Option<&str>,
+    ) -> Option<UnlockedVault> {
+        let mut guard = self.sessao.lock().expect("Mutex da sessão corrompido");
+        if let Some(sessao) = guard.take() {
+            if let Some(desc) = descricao {
+                auditoria_service::registrar(
+                    &sessao.db,
+                    sessao.usuario_id,
+                    TipoEvento::Bloqueio,
+                    ResultadoEvento::Sucesso,
+                    None,
+                    Some(desc),
+                );
+            }
+            let _ = sessao
+                .db
+                .conn
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+            drop(sessao.db);
+            Some(sessao.vault)
+        } else {
+            None
+        }
+    }
+
     /// Executa `f` com referência à sessão desbloqueada, sem clonar segredos.
     ///
     /// Se já houver uma sessão ativa, reutiliza-a; caso contrário, solicita a

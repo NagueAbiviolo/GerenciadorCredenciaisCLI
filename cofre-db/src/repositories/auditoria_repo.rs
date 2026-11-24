@@ -85,6 +85,65 @@ impl Database {
         Ok(eventos)
     }
 
+    /// Maior ID de evento gravado (0 se a tabela estiver vazia).
+    pub fn max_id_evento_auditoria(&self) -> Result<i64, DbError> {
+        Ok(self.conn.query_row(
+            "SELECT COALESCE(MAX(id), 0) FROM evento_auditoria",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Lista, em ordem de ID, os eventos com ID maior que `id_exclusivo`.
+    pub fn listar_eventos_auditoria_apos(
+        &self,
+        id_exclusivo: i64,
+    ) -> Result<Vec<EventoAuditoria>, DbError> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {COLUNAS} FROM evento_auditoria WHERE id > ?1 ORDER BY id"
+        ))?;
+        let eventos = stmt
+            .query_map(params![id_exclusivo], mapear_evento)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(eventos)
+    }
+
+    /// Importa eventos vindos de outro banco do mesmo cofre, mantendo ID e data.
+    ///
+    /// Referências a credenciais ou dispositivos que não existem neste banco viram
+    /// `NULL` (a descrição continua citando o ID). Eventos com ID já presente são
+    /// ignorados. Retorna quantos foram importados.
+    pub fn importar_eventos_auditoria(
+        &self,
+        eventos: &[EventoAuditoria],
+    ) -> Result<usize, DbError> {
+        let tx = self.conn.unchecked_transaction()?;
+        let mut importados = 0;
+        for e in eventos {
+            importados += tx.execute(
+                "INSERT OR IGNORE INTO evento_auditoria
+                     (id, usuario_id, credencial_id, dispositivo_id, tipo_evento,
+                      resultado, descricao, ocorrido_em)
+                 VALUES (?1, ?2,
+                         (SELECT id FROM credencial WHERE id = ?3),
+                         (SELECT id FROM dispositivo WHERE id = ?4),
+                         ?5, ?6, ?7, ?8)",
+                params![
+                    e.id,
+                    e.usuario_id,
+                    e.credencial_id,
+                    e.dispositivo_id,
+                    e.tipo_evento,
+                    e.resultado,
+                    e.descricao,
+                    e.ocorrido_em,
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(importados)
+    }
+
     /// Desvincula os eventos de auditoria de uma credencial (`credencial_id = NULL`),
     /// permitindo excluir a credencial sem violar a chave estrangeira e preservando o histórico de auditoria.
     pub fn desvincular_credencial_auditoria(&self, credencial_id: i64) -> Result<usize, DbError> {

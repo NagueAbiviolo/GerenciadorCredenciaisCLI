@@ -41,7 +41,10 @@ cofre credencial metodo add | list | edit | delete      # senha, TOTP, SMS, pass
 cofre credencial email  add | list | edit | delete      # e-mails de recuperação (cifrados)
 cofre preferencia list | get | set | reset              # tempo_clipboard, timeout_inatividade...
 cofre auditoria   list                                  # eventos de auditoria do cofre
+cofre backup      create | list | verify | restore | delete
 ```
+
+Os backups (`.cbk`) são cifrados com XChaCha20-Poly1305 (DEK) e trazem no cabeçalho autenticado por AAD o material criptográfico de desbloqueio e hash de integridade BLAKE3, podendo ser restaurados apenas com a senha mestre vigente no momento do backup (mesmo que o `cofre.db` tenha sido perdido).
 
 Os e-mails de recuperação são cifrados com a DEK e pedidos em prompt (não vão para o histórico do shell). Na listagem aparecem mascarados, e `--revelar` mostra o endereço completo.
 

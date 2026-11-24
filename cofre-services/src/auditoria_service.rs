@@ -29,6 +29,8 @@ pub enum TipoEvento {
     RevelacaoSegredo,
     AlteracaoPreferencia,
     RegistroDispositivo,
+    Backup,
+    Restauracao,
 }
 
 impl TipoEvento {
@@ -48,6 +50,8 @@ impl TipoEvento {
             TipoEvento::RevelacaoSegredo => "REVELACAO_SEGREDO",
             TipoEvento::AlteracaoPreferencia => "ALTERACAO_PREFERENCIA",
             TipoEvento::RegistroDispositivo => "REGISTRO_DISPOSITIVO",
+            TipoEvento::Backup => "BACKUP",
+            TipoEvento::Restauracao => "RESTAURACAO",
         }
     }
 }

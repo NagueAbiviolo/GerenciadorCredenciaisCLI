@@ -272,3 +272,28 @@ pub struct NovaPreferencia<'a> {
     pub tipo_valor: &'a str,
     pub descricao: Option<&'a str>,
 }
+
+/// Modelo da tabela `backup`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Backup {
+    pub id: i64,
+    pub usuario_id: i64,
+    pub nome_arquivo: String,
+    pub caminho_arquivo: String,
+    pub hash_integridade: String,
+    pub tamanho_bytes: i64,
+    pub versao_formato: String,
+    pub criado_em: NaiveDateTime,
+    pub ultima_restauracao_em: Option<NaiveDateTime>,
+    pub valido: bool,
+}
+
+/// Dados para registrar um novo backup na tabela `backup`.
+pub struct NovoBackup<'a> {
+    pub usuario_id: i64,
+    pub nome_arquivo: &'a str,
+    pub caminho_arquivo: &'a str,
+    pub hash_integridade: &'a str,
+    pub tamanho_bytes: i64,
+    pub versao_formato: &'a str,
+}

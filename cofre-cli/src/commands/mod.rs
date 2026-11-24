@@ -1,6 +1,7 @@
 //! Definição dos comandos CLI com clap.
 
 pub mod auditoria;
+pub mod backup;
 pub mod categoria;
 pub mod credencial;
 pub mod dispositivo;
@@ -79,8 +80,52 @@ pub enum Commands {
     #[command(subcommand)]
     Auditoria(AuditoriaCommands),
 
+    /// Gerenciar backups cifrados do cofre.
+    #[command(subcommand)]
+    Backup(BackupCommands),
+
     /// Iniciar modo interativo (shell) com sessão única e bloqueio por inatividade.
     Shell,
+}
+
+#[derive(Subcommand)]
+pub enum BackupCommands {
+    /// Criar um novo backup cifrado do cofre.
+    Create {
+        /// Diretório onde o arquivo .cbk será gravado (padrão: <dir do banco>/backups/).
+        #[arg(short, long)]
+        destino: Option<PathBuf>,
+    },
+    /// Listar os backups registrados no cofre.
+    List,
+    /// Verificar a integridade, autenticidade e validade SQLite de um backup.
+    Verify {
+        /// ID do backup registrado.
+        id: i64,
+    },
+    /// Restaurar o cofre a partir de um backup registrado (ID) ou de um arquivo .cbk.
+    Restore {
+        /// ID do backup registrado no cofre atual.
+        #[arg(required_unless_present = "arquivo", conflicts_with = "arquivo")]
+        id: Option<i64>,
+        /// Caminho de um arquivo de backup (.cbk) — funciona mesmo sem cofre inicializado.
+        #[arg(short, long, required_unless_present = "id", conflicts_with = "id")]
+        arquivo: Option<PathBuf>,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
+    },
+    /// Excluir um backup registrado (e opcionalmente manter o arquivo .cbk no disco).
+    Delete {
+        /// ID do backup registrado.
+        id: i64,
+        /// Remover apenas o registro no banco, mantendo o arquivo .cbk no disco.
+        #[arg(long)]
+        manter_arquivo: bool,
+        /// Não pedir confirmação.
+        #[arg(short = 'y', long)]
+        sim: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -596,6 +641,7 @@ pub fn executar_comando(ctx: &Contexto, command: Commands) -> Result<()> {
         Commands::Dispositivo(cmd) => dispositivo::execute(ctx, cmd),
         Commands::Preferencia(cmd) => preferencia::execute(ctx, cmd),
         Commands::Auditoria(cmd) => auditoria::execute(ctx, cmd),
+        Commands::Backup(cmd) => backup::execute(ctx, cmd),
         Commands::Shell => shell::execute(ctx),
     }
 }
