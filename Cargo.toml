@@ -14,3 +14,11 @@ version = "0.1.0"
 edition = "2021"
 authors = ["nague"]
 license = "MIT"
+
+# Argon2id (256 MiB) sem otimização deixa cada desbloqueio muito lento em
+# builds de desenvolvimento e nos testes de integração; otimiza só essas crates.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
