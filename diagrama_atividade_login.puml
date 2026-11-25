@@ -1,0 +1,60 @@
+@startuml
+skinparam shadowing false
+skinparam conditionStyle diamond
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam ArrowColor #000000
+skinparam ArrowThickness 1
+skinparam activity {
+  BackgroundColor #7DCFF5
+  BorderColor #000000
+  FontStyle bold
+}
+skinparam activityDiamond {
+  BackgroundColor #7DCFF5
+  BorderColor #000000
+  FontStyle normal
+}
+skinparam activityStartColor #000000
+skinparam activityEndColor #000000
+
+start
+:Usuário executa
+o login automático;
+:Usuário informa
+a senha mestre;
+if (Senha mestre
+correta?) then (Sim)
+  :Sistema abre o navegador
+  na página de login;
+  if (Domínio do site
+  autorizado?) then (Sim)
+    if (CAPTCHA ou MFA
+    na página?) then (Não)
+      :Sistema preenche
+      usuário e senha e envia;
+      if (Login
+      confirmado?) then (Sim)
+        :Login realizado
+        com sucesso;
+      else (Não)
+        :Usuário verifica
+        o login manualmente;
+      endif
+    else (Sim)
+      :Usuário conclui
+      o login manualmente;
+    endif
+  else (Não)
+    :Login bloqueado:
+    domínio não autorizado;
+  endif
+  :Sistema registra
+  o evento na auditoria;
+  stop
+else (Não)
+  :Cofre não
+  desbloqueado;
+  stop
+endif
+@enduml
