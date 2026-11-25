@@ -1,0 +1,277 @@
+@startuml
+hide circle
+skinparam dpi 200
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype polyline
+skinparam nodesep 50
+skinparam ranksep 220
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam ArrowColor #000000
+skinparam ArrowThickness 1
+skinparam class {
+  BackgroundColor #7DCFF5
+  BorderColor #000000
+  BorderThickness 1
+  HeaderBackgroundColor #7DCFF5
+  FontStyle bold
+}
+
+class Usuario {
+- idUsuario : int
+- nome : String
+- verificadorMestre : byte[]
+- verificadorSalt : byte[]
+- saltKdf : byte[]
+- parametrosKdf : String
+- dekCriptografada : byte[]
+- dekNonce : byte[]
+- ativo : boolean
+- criadoEm : Date
+- atualizadoEm : Date
+- ultimoAcessoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
++ desbloquear()
++ bloquear()
++ alterarSenhaMestre()
+}
+
+class Categoria {
+- idCategoria : int
+- nome : String
+- descricao : String
+- ativa : boolean
+- criadoEm : Date
+- atualizadoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class Servico {
+- idServico : int
+- nome : String
+- dominioPrincipal : String
+- urlPrincipal : String
+- descricao : String
+- ativo : boolean
+- criadoEm : Date
+- atualizadoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class UrlServico {
+- idUrlServico : int
+- url : String
+- tipo : String
+- descricao : String
+- padrao : boolean
+- ativa : boolean
+- criadoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class Credencial {
+- idCredencial : int
+- nomeExibicao : String
+- identificador : String
+- segredoCriptografado : byte[]
+- nonce : byte[]
+- observacaoCriptografada : byte[]
+- observacaoNonce : byte[]
+- favorita : boolean
+- ativa : boolean
+- criadaEm : Date
+- alteradaEm : Date
+- ultimoUsoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
++ revelarSenha()
++ copiarSenha()
+}
+
+class ConfiguracaoLogin {
+- idConfiguracaoLogin : int
+- seletorUsuario : String
+- seletorSenha : String
+- seletorBotao : String
+- urlSucesso : String
+- envioAutomatico : boolean
+- timeoutSegundos : int
+- ativa : boolean
+- ultimaValidacaoEm : Date
+- criadoEm : Date
+- atualizadoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
++ fazerLogin()
+}
+
+class SessaoNavegador {
+- idSessaoNavegador : int
+- navegador : String
+- perfilNome : String
+- diretorioPerfil : String
+- ativa : boolean
+- iniciadaEm : Date
+- ultimoUsoEm : Date
+- expiraEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class MetodoAutenticacao {
+- idMetodoAutenticacao : int
+- tipo : String
+- descricao : String
+- principal : boolean
+- habilitado : boolean
+- configuradoEm : Date
+- atualizadoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class EmailRecuperacao {
+- idEmailRecuperacao : int
+- emailCriptografado : byte[]
+- nonce : byte[]
+- principal : boolean
+- verificado : boolean
+- verificadoEm : Date
+- ativo : boolean
+- criadoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class HistoricoCredencial {
+- idHistoricoCredencial : int
+- tipoAlteracao : String
+- valorAnteriorCriptografado : byte[]
+- nonce : byte[]
+- motivo : String
+- alteradoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class EventoAuditoria {
+- idEventoAuditoria : int
+- tipoEvento : String
+- resultado : String
+- descricao : String
+- ocorridoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class AlertaSeguranca {
+- idAlertaSeguranca : int
+- tipo : String
+- nivel : String
+- titulo : String
+- mensagem : String
+- resolvido : boolean
+- criadoEm : Date
+- resolvidoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
++ verificar()
++ resolver()
+}
+
+class Dispositivo {
+- idDispositivo : int
+- nome : String
+- sistemaOperacional : String
+- fingerprintHash : String
+- confiavel : boolean
+- ativo : boolean
+- primeiroAcessoEm : Date
+- ultimoAcessoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+class Backup {
+- idBackup : int
+- nomeArquivo : String
+- caminhoArquivo : String
+- hashIntegridade : String
+- tamanhoBytes : long
+- versaoFormato : String
+- valido : boolean
+- criadoEm : Date
+- ultimaRestauracaoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
++ verificar()
++ restaurar()
+}
+
+class Preferencia {
+- idPreferencia : int
+- chave : String
+- valor : String
+- tipoValor : String
+- descricao : String
+- atualizadoEm : Date
++ cadastrar()
++ consultar()
++ editar()
++ excluir()
+}
+
+Categoria "1" -- "N" Servico
+Servico "1" -- "N" UrlServico
+Servico "1" -- "N" Credencial
+Usuario "1" -- "N" Credencial
+Usuario "1" -left- "N" Backup
+Usuario "1" -- "N" Preferencia
+Usuario "1" -- "N" Dispositivo
+
+UrlServico "1" -- "N" ConfiguracaoLogin
+Credencial "1" -- "N" ConfiguracaoLogin
+Credencial "1" -left- "N" AlertaSeguranca
+Credencial "1" -- "N" MetodoAutenticacao
+Credencial "1" -- "N" EmailRecuperacao
+Credencial "1" -- "N" HistoricoCredencial
+Credencial "1" -- "N" SessaoNavegador
+Credencial "1" -right- "N" EventoAuditoria
+Dispositivo "1" --- "N" SessaoNavegador
+Dispositivo "1" -- "N" EventoAuditoria
+Usuario "1" -- "N" EventoAuditoria
+
+@enduml
